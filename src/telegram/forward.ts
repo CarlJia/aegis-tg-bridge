@@ -64,16 +64,29 @@ export async function forwardToOwner(
   }
 
   if (ownerMsgId !== null) {
-    // Write message_map: owner_msg_id → stranger_chat_id
-    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30; // 30 days
-    const mapValue = JSON.stringify({
-      stranger_chat_id,
-      owner_chat_id,
-      expires_at: expiresAt,
-    });
-    await setMessageMap(env.STATE, String(ownerMsgId), mapValue);
+    await registerRelayTarget(env.STATE, ownerMsgId, stranger_chat_id, owner_chat_id);
   }
 
   return ownerMsgId;
+}
+
+/**
+ * Record that a message delivered to the owner (`ownerMessageId`) should relay
+ * back to `strangerChatId` when the owner replies to it. TTL 30 days — the
+ * reply window. Shared by the normal forward path and the verify-time forward.
+ */
+export async function registerRelayTarget(
+  kv: KVNamespace,
+  ownerMessageId: number,
+  strangerChatId: string,
+  ownerChatId: string
+): Promise<void> {
+  const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+  const mapValue = JSON.stringify({
+    stranger_chat_id: strangerChatId,
+    owner_chat_id: ownerChatId,
+    expires_at: expiresAt,
+  });
+  await setMessageMap(kv, String(ownerMessageId), mapValue);
 }
 

@@ -14,18 +14,22 @@ const {
   mockDeletePendingMessageId,
   mockGetPendingMessageId,
   mockGetOwnerChatId,
+  mockSetMessageMap,
   mockAnswerCallbackQuery,
   mockCopyMessageToOwner,
+  mockDeleteMessage,
 } = vi.hoisted(() => ({
   mockAddToWhitelist: vi.fn<[KVNamespace, string], Promise<void>>(),
   mockDeletePendingMessageId: vi.fn<[KVNamespace, string], Promise<void>>(),
   mockGetPendingMessageId: vi.fn<[KVNamespace, string], Promise<string | null>>(),
   mockGetOwnerChatId: vi.fn<[KVNamespace], Promise<string | null>>(),
+  mockSetMessageMap: vi.fn<[KVNamespace, string, string, number?], Promise<void>>(),
   mockAnswerCallbackQuery: vi.fn<[string, string | undefined, Env], Promise<void>>(),
   mockCopyMessageToOwner: vi.fn<
     [number | string, number | string, number, string, Env, boolean],
-    Promise<void>
+    Promise<number | null>
   >(),
+  mockDeleteMessage: vi.fn<[number | string, number, Env], Promise<void>>(),
 }));
 
 vi.mock("../../kv/store", () => ({
@@ -33,11 +37,13 @@ vi.mock("../../kv/store", () => ({
   deletePendingMessageId: mockDeletePendingMessageId,
   getPendingMessageId: mockGetPendingMessageId,
   getOwnerChatId: mockGetOwnerChatId,
+  setMessageMap: mockSetMessageMap,
 }));
 
 vi.mock("../../telegram/send", () => ({
   answerCallbackQuery: mockAnswerCallbackQuery,
   copyMessageToOwner: mockCopyMessageToOwner,
+  deleteMessage: mockDeleteMessage,
 }));
 
 // ---------------------------------------------------------------------------
@@ -78,8 +84,10 @@ beforeEach(() => {
   mockDeletePendingMessageId.mockReset().mockResolvedValue(undefined);
   mockGetPendingMessageId.mockReset().mockResolvedValue(null);
   mockGetOwnerChatId.mockReset().mockResolvedValue(null);
+  mockSetMessageMap.mockReset().mockResolvedValue(undefined);
   mockAnswerCallbackQuery.mockReset().mockResolvedValue(undefined);
-  mockCopyMessageToOwner.mockReset().mockResolvedValue(undefined);
+  mockCopyMessageToOwner.mockReset().mockResolvedValue(null);
+  mockDeleteMessage.mockReset().mockResolvedValue(undefined);
   __reset(); // always start with a clean counter
 });
 
@@ -129,6 +137,46 @@ describe("handleCallbackQuery", () => {
       expect(body).toContain("[from @stranger_john · chat_id=789]");
       expect(body).toContain("想谈合作");
       expect(isText).toBe(true);
+    });
+
+    it("registers the forwarded verify-time message so the owner can reply to it", async () => {
+      mockGetOwnerChatId.mockResolvedValueOnce("111");
+      mockGetPendingMessageId.mockResolvedValueOnce(
+        JSON.stringify({ message_id: 5, text: "想谈合作", caption: null })
+      );
+      mockCopyMessageToOwner.mockResolvedValueOnce(777);
+
+      await handleCallbackQuery(
+        { id: "q1", from: { id: 789, username: "stranger_john" }, data: "verify:789" },
+        stubEnv()
+      );
+
+      expect(mockSetMessageMap).toHaveBeenCalledTimes(1);
+      const [, key, val] = mockSetMessageMap.mock.calls[0]!;
+      expect(key).toBe("777");
+      expect(JSON.parse(val).stranger_chat_id).toBe("789");
+    });
+
+    it("does not register a mapping when the forward failed", async () => {
+      mockGetOwnerChatId.mockResolvedValueOnce("111");
+      mockCopyMessageToOwner.mockResolvedValueOnce(null);
+
+      await handleCallbackQuery(
+        { id: "q1", from: { id: 789 }, data: "verify:789" },
+        stubEnv()
+      );
+
+      expect(mockSetMessageMap).not.toHaveBeenCalled();
+    });
+
+    it("deletes the verify button message after a successful verify", async () => {
+      await handleCallbackQuery(
+        { id: "q1", from: { id: 123 }, data: "verify:123", message: { message_id: 55 } },
+        stubEnv()
+      );
+
+      expect(mockDeleteMessage).toHaveBeenCalledTimes(1);
+      expect(mockDeleteMessage).toHaveBeenCalledWith("123", 55, expect.anything());
     });
   });
 

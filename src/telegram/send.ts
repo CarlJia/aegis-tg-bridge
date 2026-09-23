@@ -49,9 +49,9 @@ export async function answerCallbackQuery(
 }
 
 /**
- * Notify the owner of a whitelist addition (text path) or copy a media
- * message with the prefix in its caption. Never adds a forward header.
- * Fails silently.
+ * Send a message to the owner (text path) or copy a media message with the
+ * prefix in its caption. Never adds a forward header. Returns the new
+ * message_id, or null on failure.
  */
 export async function copyMessageToOwner(
   owner_chat_id: number | string,
@@ -60,19 +60,34 @@ export async function copyMessageToOwner(
   prefix: string,
   env: Env,
   isText: boolean
+): Promise<number | null> {
+  const result = isText
+    ? await tgCall<{ message_id: number }>(
+        "sendMessage",
+        { chat_id: owner_chat_id, text: prefix },
+        env
+      )
+    : await tgCall<{ message_id: number }>(
+        "copyMessage",
+        {
+          chat_id: owner_chat_id,
+          from_chat_id: source_chat_id,
+          message_id,
+          caption: prefix,
+        },
+        env
+      );
+  return result?.message_id ?? null;
+}
+
+/**
+ * Delete a message the bot sent (e.g. the verify button prompt after the
+ * stranger has acted on it). Fails silently.
+ */
+export async function deleteMessage(
+  chat_id: number | string,
+  message_id: number,
+  env: Env
 ): Promise<void> {
-  if (isText) {
-    await tgCall("sendMessage", { chat_id: owner_chat_id, text: prefix }, env);
-  } else {
-    await tgCall(
-      "copyMessage",
-      {
-        chat_id: owner_chat_id,
-        from_chat_id: source_chat_id,
-        message_id,
-        caption: prefix,
-      },
-      env
-    );
-  }
+  await tgCall("deleteMessage", { chat_id, message_id }, env);
 }
