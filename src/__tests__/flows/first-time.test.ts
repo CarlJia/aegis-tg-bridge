@@ -55,13 +55,13 @@ describe("handleFirstTime", () => {
     expect(mockSendVerifyButton).toHaveBeenCalledWith("888", expect.anything());
   });
 
-  it("calls setPendingMessageId with the incoming message_id", async () => {
+  it("stores a snapshot of the incoming message as the pending entry", async () => {
     const msg = { message_id: 42, text: "你好", chat: { id: 999 } };
     await handleFirstTime(msg, stubEnv());
     expect(mockSetPendingMessageId).toHaveBeenCalledTimes(1);
-    const [, chatId, msgId] = mockSetPendingMessageId.mock.calls[0]!;
+    const [, chatId, stored] = mockSetPendingMessageId.mock.calls[0]!;
     expect(chatId).toBe("999");
-    expect(msgId).toBe("42");
+    expect(JSON.parse(stored)).toEqual({ message_id: 42, text: "你好", caption: null });
   });
 
   it("does NOT call sendVerifyButton when evaluateMessage hits (rule match)", async () => {

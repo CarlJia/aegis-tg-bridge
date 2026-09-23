@@ -8,8 +8,9 @@ import type { SummaryEntry } from "../../kv/store";
 describe("handleStats", () => {
   // @ts-ignore
   const ctx = createExecutionContext();
-  const summaryKv = env.SUMMARY as KVNamespace;
-  const stateKv = env.STATE as KVNamespace;
+  // summary_queue lives in the STATE namespace (same binding the routing
+  // write path and the cron digest use).
+  const summaryKv = env.STATE as KVNamespace;
 
   // @ts-ignore
   let mockFetch: ReturnType<typeof vi.spyOn>;

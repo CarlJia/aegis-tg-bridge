@@ -12,12 +12,14 @@ import type { Env } from "../../config";
 const {
   mockAddToWhitelist,
   mockDeletePendingMessageId,
+  mockGetPendingMessageId,
   mockGetOwnerChatId,
   mockAnswerCallbackQuery,
   mockCopyMessageToOwner,
 } = vi.hoisted(() => ({
   mockAddToWhitelist: vi.fn<[KVNamespace, string], Promise<void>>(),
   mockDeletePendingMessageId: vi.fn<[KVNamespace, string], Promise<void>>(),
+  mockGetPendingMessageId: vi.fn<[KVNamespace, string], Promise<string | null>>(),
   mockGetOwnerChatId: vi.fn<[KVNamespace], Promise<string | null>>(),
   mockAnswerCallbackQuery: vi.fn<[string, string | undefined, Env], Promise<void>>(),
   mockCopyMessageToOwner: vi.fn<
@@ -29,6 +31,7 @@ const {
 vi.mock("../../kv/store", () => ({
   addToWhitelist: mockAddToWhitelist,
   deletePendingMessageId: mockDeletePendingMessageId,
+  getPendingMessageId: mockGetPendingMessageId,
   getOwnerChatId: mockGetOwnerChatId,
 }));
 
@@ -73,6 +76,7 @@ function stubEnv(kv?: KVNamespace): Env {
 beforeEach(() => {
   mockAddToWhitelist.mockReset().mockResolvedValue(undefined);
   mockDeletePendingMessageId.mockReset().mockResolvedValue(undefined);
+  mockGetPendingMessageId.mockReset().mockResolvedValue(null);
   mockGetOwnerChatId.mockReset().mockResolvedValue(null);
   mockAnswerCallbackQuery.mockReset().mockResolvedValue(undefined);
   mockCopyMessageToOwner.mockReset().mockResolvedValue(undefined);
@@ -108,21 +112,22 @@ describe("handleCallbackQuery", () => {
       expect(mockAnswerCallbackQuery).toHaveBeenCalledWith("q_abc", "已加入白名单", expect.anything());
     });
 
-    it("sends notification to owner via copyMessageToOwner", async () => {
-      const kv = createKV();
-      // Seed owner_chat_id directly into the KV (callback reads env.STATE.get directly)
-      await kv.put("bot:owner_chat_id", "111");
+    it("forwards the stranger's original message to the owner", async () => {
+      mockGetOwnerChatId.mockResolvedValueOnce("111");
+      mockGetPendingMessageId.mockResolvedValueOnce(
+        JSON.stringify({ message_id: 5, text: "想谈合作", caption: null })
+      );
       await handleCallbackQuery(
         { id: "q1", from: { id: 789, username: "stranger_john" }, data: "verify:789" },
-        stubEnv(kv)
+        stubEnv()
       );
       expect(mockCopyMessageToOwner).toHaveBeenCalledTimes(1);
       // copyMessageToOwner(owner_chat_id, source_chat_id, message_id, prefix, env, isText)
-      const [ownerId, sourceId, , prefix, , isText] = mockCopyMessageToOwner.mock.calls[0]!;
+      const [ownerId, sourceId, , body, , isText] = mockCopyMessageToOwner.mock.calls[0]!;
       expect(ownerId).toBe("111");
       expect(sourceId).toBe("789");
-      expect(prefix).toContain("stranger_john");
-      expect(prefix).toContain("789");
+      expect(body).toContain("[from @stranger_john · chat_id=789]");
+      expect(body).toContain("想谈合作");
       expect(isText).toBe(true);
     });
   });

@@ -16,7 +16,7 @@ export async function handleStats(
   env: Env
 ): Promise<void> {
   const today = formatDate(0);
-  const entries = await getSummary(env.SUMMARY, today);
+  const entries = await getSummary(env.STATE, today);
   const todayCount = entries.length;
 
   const lines: string[] = [`今日拦截 ${todayCount} 条`];
@@ -24,7 +24,7 @@ export async function handleStats(
   // rolling 7-day
   for (let i = 1; i <= 7; i++) {
     const date = formatDate(-i);
-    const count = (await getSummary(env.SUMMARY, date)).length;
+    const count = (await getSummary(env.STATE, date)).length;
     lines.push(`${date}: ${count} 条`);
   }
 

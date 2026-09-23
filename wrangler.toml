@@ -3,9 +3,10 @@ compatibility_date = "2024-01-01"
 main = "src/index.ts"
 
 # KV namespaces — replace IDs with actual values from `wrangler kv:namespace create`
-# STATE: whitelist, blacklist, user_settings, owner_chat_id, pending_buttons
-# RULES: bot:rules
-# SUMMARY: summary_queue, message_map, last_summary
+# STATE: all operational keys (whitelist, blacklist, user_settings, owner_chat_id,
+#        pending_buttons, summary_queue, message_map, last_summary)
+# RULES: reserved for KV-based rule overrides
+# SUMMARY: reserved (currently unused; summary data lives in STATE)
 [[kv_namespaces]]
 binding = "STATE"
 id = "REPLACE_WITH_STATE_KV_ID"
