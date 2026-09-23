@@ -1,6 +1,6 @@
 import type { Env } from "../config";
 import { getUserSettings } from "../kv/store";
-import { tgSendMessage } from "./_tg";
+import { tgSendMessage } from "../telegram/api";
 
 export async function handleSettings(
   message: { chat: { id: number } },

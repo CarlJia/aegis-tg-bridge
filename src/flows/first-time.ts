@@ -20,19 +20,9 @@ import {
 } from "../kv/store";
 import { sendVerifyButton } from "../telegram/send";
 import type { Env } from "../config";
+import type { TgMessage } from "../telegram/types";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface TgMessage {
-  message_id: number;
-  text?: string;
-  caption?: string;
-  from?: { id: number; username?: string; first_name?: string };
-  chat: { id: number; type?: string };
-  date?: number;
-}
+export type { TgMessage };
 
 // ---------------------------------------------------------------------------
 // Entry point

@@ -39,8 +39,15 @@ async function classify(msg: TgMessage, env: Env): Promise<Route> {
   const chatIdStr = String(msg.chat.id);
   const text = msg.text ?? "";
 
+  // The three lookups are independent — read them together rather than
+  // paying three sequential KV round-trips on every inbound message.
+  const [blacklist, ownerId, whitelist] = await Promise.all([
+    getBlacklist(env.STATE),
+    getOwnerChatId(env.STATE),
+    getWhitelist(env.STATE),
+  ]);
+
   // 1) Blacklisted → silent, even for command text.
-  const blacklist = await getBlacklist(env.STATE);
   if (blacklist.includes(chatIdStr)) {
     return { type: "blacklisted" };
   }
@@ -52,13 +59,11 @@ async function classify(msg: TgMessage, env: Env): Promise<Route> {
   }
 
   // 3) Owner (non-command message)?
-  const ownerId = await getOwnerChatId(env.STATE);
   if (ownerId !== null && chatIdStr === ownerId) {
     return { type: "owner" };
   }
 
   // 4) Whitelisted → forward.
-  const whitelist = await getWhitelist(env.STATE);
   if (whitelist.includes(chatIdStr)) {
     return { type: "whitelisted" };
   }

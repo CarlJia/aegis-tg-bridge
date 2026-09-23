@@ -1,6 +1,6 @@
 import type { Env } from "../config";
 import { setOwnerChatId } from "../kv/store";
-import { tgSendMessage } from "./_tg";
+import { tgSendMessage } from "../telegram/api";
 
 const WELCOME = `欢迎使用 Aegis TG Bridge！
 

@@ -41,12 +41,18 @@ async function tgFetch<T>(
   }
 }
 
+/**
+ * Low-level Bot API call. Returns the `result` payload or null on failure.
+ * Exported so sibling modules (send.ts) share one fetch path.
+ */
+export const tgCall = tgFetch;
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Send a plain text message.
+ * Send a plain text message. Returns the new message_id, or null on failure.
  * Fails silently.
  */
 export async function tgSendMessage(
@@ -54,8 +60,13 @@ export async function tgSendMessage(
   chatId: number | string,
   text: string,
   parseMode: "HTML" | "Markdown" = "HTML"
-): Promise<void> {
-  await tgFetch("sendMessage", { chat_id: chatId, text, parse_mode: parseMode }, env);
+): Promise<number | null> {
+  const result = await tgFetch<{ message_id: number }>(
+    "sendMessage",
+    { chat_id: chatId, text, parse_mode: parseMode },
+    env
+  );
+  return result?.message_id ?? null;
 }
 
 /**
