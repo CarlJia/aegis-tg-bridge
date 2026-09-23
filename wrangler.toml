@@ -1,0 +1,29 @@
+name = "aegis-tg-bridge"
+compatibility_date = "2024-01-01"
+main = "src/index.ts"
+
+# KV namespaces — replace IDs with actual values from `wrangler kv:namespace create`
+# STATE: whitelist, blacklist, user_settings, owner_chat_id, pending_buttons
+# RULES: bot:rules
+# SUMMARY: summary_queue, message_map, last_summary
+[[kv_namespaces]]
+binding = "STATE"
+id = "REPLACE_WITH_STATE_KV_ID"
+preview_id = "00000000-0000-0000-0000-000000000000"
+
+[[kv_namespaces]]
+binding = "RULES"
+id = "REPLACE_WITH_RULES_KV_ID"
+preview_id = "00000000-0000-0000-0000-000000000001"
+
+[[kv_namespaces]]
+binding = "SUMMARY"
+id = "REPLACE_WITH_SUMMARY_KV_ID"
+preview_id = "00000000-0000-0000-0000-000000000002"
+
+# Environment variables injected via wrangler secret put BOT_TOKEN WEBHOOK_SECRET
+# or defined in .dev.vars for local development (gitignored)
+
+# Cron trigger — populated by U8
+# [triggers]
+# crons = ["*/5 * * * *"]
