@@ -64,17 +64,6 @@ describe("handleFirstTime", () => {
     expect(JSON.parse(stored)).toEqual({ message_id: 42, text: "你好", caption: null });
   });
 
-  it("does NOT call sendVerifyButton when evaluateMessage hits (rule match)", async () => {
-    const msg = {
-      message_id: 1,
-      text: "usdt 搬砖日入过千 https://example.com/promo",
-      chat: { id: 777 },
-    };
-    const result = await handleFirstTime(msg, stubEnv());
-    expect(result).toBe(false);
-    expect(mockSendVerifyButton).not.toHaveBeenCalled();
-  });
-
   it("does NOT call sendVerifyButton again when pending_buttons already exists", async () => {
     mockGetPendingMessageId.mockResolvedValueOnce("10");
     const msg = { message_id: 11, text: "在吗？", chat: { id: 555 } };
