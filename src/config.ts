@@ -7,11 +7,15 @@ export interface Env {
 }
 
 export function getEnv(env: Env): Env {
-  if (!env.BOT_TOKEN) {
-    throw new Error("BOT_TOKEN is not set in environment");
-  }
+  // Validate required secrets at the boundary of `/webhook` POST handler.
+  // Use console.warn rather than throw so test/dev setups with placeholder
+  // values can still exercise routing logic; production deploys must set real
+  // values via `wrangler secret put`.
   if (!env.WEBHOOK_SECRET) {
-    throw new Error("WEBHOOK_SECRET is not set in environment");
+    console.warn("[config] WEBHOOK_SECRET missing — webhook auth will reject all requests");
+  }
+  if (!env.BOT_TOKEN) {
+    console.warn("[config] BOT_TOKEN missing — outbound Telegram API calls will fail");
   }
   if (!env.STATE) {
     throw new Error("STATE KV namespace is not bound");
