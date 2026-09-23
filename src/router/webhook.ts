@@ -44,6 +44,12 @@ interface TgUpdate {
   // other fields are possible but unused for now
 }
 
+interface TgCallbackQuery {
+  id: string;
+  from: { id: number };
+  data?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Main webhook handler
 // ---------------------------------------------------------------------------
@@ -82,7 +88,7 @@ export async function handleWebhook(req: Request, env: Env): Promise<Response> {
     // edited messages still route through the same message handler
     await handleMessage(update.edited_message, env);
   } else if (update.callback_query) {
-    await handleCallbackQuery(update.callback_query, env);
+    await handleCallbackQuery(update.callback_query as TgCallbackQuery, env);
   } else {
     // Other update types: log and return 200 without dispatching
     console.log("[webhook] unhandled update type:", JSON.stringify(update));
