@@ -22,9 +22,31 @@
  * notification to the owner noting the new whitelist addition.
  */
 
-import { addToWhitelist, deletePendingMessageId } from "../kv/store";
+import {
+  addToWhitelist,
+  deletePendingMessageId,
+  getPendingMessageId,
+  getOwnerChatId,
+} from "../kv/store";
 import { answerCallbackQuery, copyMessageToOwner } from "../telegram/send";
 import type { Env } from "../config";
+
+interface PendingSnapshot {
+  message_id?: number;
+  text?: string | null;
+  caption?: string | null;
+}
+
+/** Extract the displayable body from a stored pending snapshot. */
+function extractSnapshotText(raw: string | null): string {
+  if (!raw) return "";
+  try {
+    const snap = JSON.parse(raw) as PendingSnapshot;
+    return snap.text ?? snap.caption ?? "";
+  } catch {
+    return "";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Test seam — track calls so U2's existing tests continue to pass
@@ -76,31 +98,30 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // Read the stranger's first-message snapshot BEFORE clearing it, so we can
+  // forward its content to the owner (R2). Falls back to a bare notification
+  // when no snapshot is available.
+  const snapshotRaw = await getPendingMessageId(env.STATE, parsed_chat_id);
+
   // Add to whitelist
   await addToWhitelist(env.STATE, parsed_chat_id);
 
   // Clean up the pending button key
   await deletePendingMessageId(env.STATE, parsed_chat_id);
 
-  // Get owner_chat_id for the notification
-  const owner_chat_id = await env.STATE.get("bot:owner_chat_id");
+  // Forward the original message to the owner with the standard prefix.
+  const owner_chat_id = await getOwnerChatId(env.STATE);
   if (owner_chat_id) {
     const from = query.from;
-    const display =
-      from.username
-        ? `@${from.username}`
-        : from.first_name
-          ? from.first_name
-          : parsed_chat_id;
-    const prefix = `新联系人已加入白名单: ${display} · chat_id=${parsed_chat_id}`;
-    await copyMessageToOwner(
-      owner_chat_id,
-      parsed_chat_id,
-      0,
-      prefix,
-      env,
-      true // isText: send as plain text notification
-    );
+    const display = from.username
+      ? `@${from.username}`
+      : from.first_name
+        ? from.first_name
+        : parsed_chat_id;
+    const prefix = `[from ${display} · chat_id=${parsed_chat_id}]`;
+    const originalText = extractSnapshotText(snapshotRaw);
+    const body = originalText ? `${prefix}\n${originalText}` : prefix;
+    await copyMessageToOwner(owner_chat_id, parsed_chat_id, 0, body, env, true);
   }
 
   // Answer the callback query with a toast

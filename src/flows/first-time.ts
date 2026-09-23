@@ -50,9 +50,15 @@ export async function handleFirstTime(
     return false;
   }
 
-  // First time: store the message_id of the incoming message as the pending one.
-  // TTL 7 days — if user never clicks, the key expires naturally.
-  await setPendingMessageId(env.STATE, chat_id, String(message.message_id));
+  // First time: remember a snapshot of the message so the verify callback can
+  // forward its content to the owner (R2). The webhook callback does not carry
+  // the original message body, so the snapshot is what makes the forward work.
+  const snapshot = JSON.stringify({
+    message_id: message.message_id,
+    text: message.text ?? null,
+    caption: message.caption ?? null,
+  });
+  await setPendingMessageId(env.STATE, chat_id, snapshot);
 
   // Send the verify inline button.
   await sendVerifyButton(chat_id, env);
