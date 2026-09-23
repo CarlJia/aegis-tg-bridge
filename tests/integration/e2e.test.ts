@@ -127,52 +127,65 @@ describe("end-to-end journeys", () => {
     expect(toX).toHaveLength(1);
     expect(JSON.stringify(toX[0]!.body)).toContain("我确认是本人");
 
-    // X clicks verify.
+    // X clicks verify → original message forwarded, verify prompt deleted,
+    // and the forward registered so the owner can reply to it.
+    fetchSpy.mockClear();
     await update(env, {
       update_id: 3,
-      callback_query: { id: "cb1", from: { id: 123 }, data: "verify:123" },
+      callback_query: {
+        id: "cb1",
+        from: { id: 123 },
+        data: "verify:123",
+        message: { message_id: 500 },
+      },
     });
     expect(await env.STATE.get("bot:whitelist")).toContain("123");
 
-    // X sends a follow-up → forwarded to owner with the prefix.
+    // The verify button prompt is deleted from X's chat.
+    const deletes = sentMessages(fetchSpy).filter((m) => m.endpoint === "deleteMessage");
+    expect(deletes).toHaveLength(1);
+    expect(String(deletes[0]!.body.chat_id)).toBe("123");
+    expect(deletes[0]!.body.message_id).toBe(500);
+
+    // The verify-time forward is registered in message_map (regression: it was
+    // missing, so replying to it failed with "找不到对应的陌生人").
+    const mapKeys = await env.STATE.list({ prefix: "bot:message_map:" });
+    expect(mapKeys.keys).toHaveLength(1);
+    const forwardedId = Number(
+      mapKeys.keys[0]!.name.slice("bot:message_map:".length)
+    );
+
+    // Owner replies to the verify-time forward → relayed to X.
     fetchSpy.mockClear();
     await update(env, {
       update_id: 4,
       message: {
         message_id: 4,
-        text: "明天有空吗",
-        chat: { id: 123 },
-        from: { id: 123, username: "stranger_x" },
-      },
-    });
-    const forwardCalls = sentMessages(fetchSpy).filter((m) => m.body.chat_id === "999");
-    expect(forwardCalls).toHaveLength(1);
-    expect(String(forwardCalls[0]!.body.text)).toContain("[from @stranger_x · chat_id=123]");
-
-    // Owner replies to the forwarded message. The forwarded message_id comes
-    // from the mock Telegram API and is recorded in the message_map, so read
-    // it back rather than assuming a fixed value.
-    const mapKeys = await env.STATE.list({ prefix: "bot:message_map:" });
-    expect(mapKeys.keys.length).toBeGreaterThan(0);
-    const forwardedId = Number(
-      mapKeys.keys[0]!.name.slice("bot:message_map:".length)
-    );
-
-    fetchSpy.mockClear();
-    await update(env, {
-      update_id: 5,
-      message: {
-        message_id: 5,
         text: "可以,下午三点",
         chat: { id: 999 },
         from: { id: 999 },
         reply_to_message: { message_id: forwardedId },
       },
     });
-    const relayCalls = sentMessages(fetchSpy).filter((m) => m.body.chat_id === "123");
+    const relayCalls = sentMessages(fetchSpy).filter((m) => String(m.body.chat_id) === "123");
     expect(relayCalls).toHaveLength(1);
     expect(relayCalls[0]!.endpoint).toBe("sendMessage");
     expect(relayCalls[0]!.body.text).toBe("可以,下午三点");
+
+    // A subsequent whitelisted message still forwards with the prefix.
+    fetchSpy.mockClear();
+    await update(env, {
+      update_id: 5,
+      message: {
+        message_id: 5,
+        text: "明天有空吗",
+        chat: { id: 123 },
+        from: { id: 123, username: "stranger_x" },
+      },
+    });
+    const followUps = sentMessages(fetchSpy).filter((m) => String(m.body.chat_id) === "999");
+    expect(followUps).toHaveLength(1);
+    expect(String(followUps[0]!.body.text)).toContain("[from @stranger_x · chat_id=123]");
   });
 
   it("F2: spam is intercepted, audited, and summarized on the next cron tick (AE3)", async () => {

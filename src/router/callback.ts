@@ -11,15 +11,13 @@
  *  2. SECURITY CHECK: from.id === parsed_chat_id
  *  3. addToWhitelist(parsed_chat_id)
  *  4. deletePendingMessageId(parsed_chat_id)
- *  5. Send a small notification to owner (see note below)
- *  6. answerCallbackQuery("已加入白名单")
+ *  5. Forward the stranger's original message to the owner (from the stored
+ *     snapshot) and register it for reply routing
+ *  6. Delete the verify button message
+ *  7. answerCallbackQuery("已加入白名单")
  *
- * NOTE on forwarding the original pending message:
- * The original message body is not available in a webhook callback request.
- * Telegram does not re-send the full message object with the callback_query —
- * it only sends callback_query.id, from, and data. Re-fetching via getMessages
- * would require an extra API call and adds complexity. Instead we send a small
- * notification to the owner noting the new whitelist addition.
+ * The original message body is not carried on the callback itself, so step 5
+ * replays the snapshot first-time.ts stored when it sent the button.
  */
 
 import {
@@ -28,7 +26,8 @@ import {
   getPendingMessageId,
   getOwnerChatId,
 } from "../kv/store";
-import { answerCallbackQuery, copyMessageToOwner } from "../telegram/send";
+import { answerCallbackQuery, copyMessageToOwner, deleteMessage } from "../telegram/send";
+import { registerRelayTarget } from "../telegram/forward";
 import type { Env } from "../config";
 
 interface PendingSnapshot {
@@ -68,6 +67,8 @@ interface TgCallbackQuery {
   id: string;
   from: { id: number; username?: string; first_name?: string };
   data?: string;
+  /** The message the inline keyboard is attached to (the verify prompt). */
+  message?: { message_id: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +110,8 @@ export async function handleCallbackQuery(
   // Clean up the pending button key
   await deletePendingMessageId(env.STATE, parsed_chat_id);
 
-  // Forward the original message to the owner with the standard prefix.
+  // Forward the original message to the owner with the standard prefix, and
+  // register it so the owner's reply can be relayed back (Bug A fix).
   const owner_chat_id = await getOwnerChatId(env.STATE);
   if (owner_chat_id) {
     const from = query.from;
@@ -121,7 +123,22 @@ export async function handleCallbackQuery(
     const prefix = `[from ${display} · chat_id=${parsed_chat_id}]`;
     const originalText = extractSnapshotText(snapshotRaw);
     const body = originalText ? `${prefix}\n${originalText}` : prefix;
-    await copyMessageToOwner(owner_chat_id, parsed_chat_id, 0, body, env, true);
+    const ownerMsgId = await copyMessageToOwner(
+      owner_chat_id,
+      parsed_chat_id,
+      0,
+      body,
+      env,
+      true
+    );
+    if (ownerMsgId !== null) {
+      await registerRelayTarget(env.STATE, ownerMsgId, parsed_chat_id, owner_chat_id);
+    }
+  }
+
+  // Remove the verify button prompt now that it has been acted on (Bug B fix).
+  if (query.message) {
+    await deleteMessage(parsed_chat_id, query.message.message_id, env);
   }
 
   // Answer the callback query with a toast
