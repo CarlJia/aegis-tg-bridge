@@ -1,7 +1,7 @@
 import type { Env } from "../config";
 import { addToWhitelist } from "../kv/store";
 import { assertOwner } from "./assert-owner";
-import { tgSendMessage } from "./_tg";
+import { tgSendMessage } from "../telegram/api";
 
 export async function handleWhitelist(
   message: { chat: { id: number }; text?: string },

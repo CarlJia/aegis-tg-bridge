@@ -66,7 +66,7 @@ describe("sendVerifyButton", () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
-      text: async () => "server error",
+      json: async () => ({ ok: false, description: "server error" }),
     } as unknown as Response);
     await expect(sendVerifyButton(123, stubEnv())).resolves.not.toThrow();
   });
@@ -98,7 +98,7 @@ describe("answerCallbackQuery", () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
-      text: async () => "error",
+      json: async () => ({ ok: false, description: "server error" }),
     } as unknown as Response);
     await expect(answerCallbackQuery("q", "msg", stubEnv())).resolves.not.toThrow();
   });
@@ -133,7 +133,7 @@ describe("copyMessageToOwner", () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
-      text: async () => "error",
+      json: async () => ({ ok: false, description: "server error" }),
     } as unknown as Response);
     await expect(
       copyMessageToOwner(1, 2, 3, "prefix", stubEnv(), true)

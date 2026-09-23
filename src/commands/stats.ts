@@ -1,6 +1,6 @@
 import type { Env } from "../config";
 import { getSummary } from "../kv/store";
-import { tgSendMessage } from "./_tg";
+import { tgSendMessage } from "../telegram/api";
 
 function formatDate(offset: number): string {
   const d = new Date();
