@@ -1,20 +1,17 @@
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 import { defineConfig } from "vitest/config";
-import type { KVNamespace } from "@cloudflare/workers-types";
 
-// Extend ProvidedEnv to include our KV bindings
-declare module "cloudflare:test" {
-  interface ProvidedEnv {
-    STATE: KVNamespace;
-    RULES: KVNamespace;
-    SUMMARY: KVNamespace;
-  }
-}
-
+/**
+ * Integration test config — runs end-to-end scenarios against the real Worker
+ * entry (fetch + scheduled) with miniflare-backed KV.
+ *
+ * Unit tests use the default `vitest.config.ts`; this config scopes the run to
+ * `tests/integration/` so the two suites can be invoked independently.
+ */
 export default defineWorkersConfig(
   defineConfig({
     test: {
-      include: ["src/**/*.test.ts"],
+      include: ["tests/integration/**/*.test.ts"],
       poolOptions: {
         workers: {
           main: "./src/index.ts",

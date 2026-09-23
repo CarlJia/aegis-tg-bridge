@@ -14,17 +14,24 @@ export async function dispatch(
   env: Env
 ): Promise<void> {
   const ownerId = await getOwnerChatId(env.STATE);
-  if (ownerId === null || String(message.chat.id) !== ownerId) {
-    // 非 owner 静默忽略
+  const cmd = (message.text ?? "").split(" ")[0];
+  const isOwner = ownerId !== null && String(message.chat.id) === ownerId;
+
+  // `/start` bootstraps ownership when it is unset; the existing owner may
+  // re-run it. Any other sender's `/start` is ignored once an owner exists.
+  if (cmd === "/start") {
+    if (ownerId === null || isOwner) {
+      await handleStart(message, env);
+    }
     return;
   }
 
-  const cmd = (message.text ?? "").split(" ")[0];
+  // All other commands are owner-only.
+  if (!isOwner) {
+    return;
+  }
 
   switch (cmd) {
-    case "/start":
-      await handleStart(message, env);
-      break;
     case "/stats":
       await handleStats(message, env);
       break;

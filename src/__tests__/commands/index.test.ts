@@ -50,10 +50,17 @@ describe("dispatch", () => {
     expect(body.text).toContain("欢迎");
   });
 
-  it("/start from non-owner is silently ignored", async () => {
+  it("/start from a non-owner is silently ignored when an owner exists", async () => {
+    await setOwnerChatId(stateKv, "999");
     const msg = { chat: { id: 888 }, text: "/start" };
     await dispatch(msg, env as Parameters<typeof dispatch>[1]);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("/start with no owner bootstraps ownership", async () => {
+    const msg = { chat: { id: 888 }, text: "/start" };
+    await dispatch(msg, env as Parameters<typeof dispatch>[1]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("/block from owner invokes block handler and writes blacklist", async () => {

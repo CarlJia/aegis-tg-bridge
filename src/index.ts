@@ -1,5 +1,6 @@
 import { getEnv } from "./config";
 import { handleWebhook } from "./router/webhook";
+import { handleCron } from "./cron/summary";
 
 // ---------------------------------------------------------------------------
 // fetch handler — webhook entry point
@@ -22,11 +23,17 @@ async function fetch(request: Request, env: unknown): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
-// scheduled handler — cron entry point (U8+ will add summary logic)
+// scheduled handler — cron entry point (U8)
 // ---------------------------------------------------------------------------
-async function scheduled(event: unknown, env: unknown): Promise<void> {
+async function scheduled(event: unknown, env: unknown, ctx?: { waitUntil?: (p: Promise<unknown>) => void }): Promise<void> {
   const evt = event as { cron?: string };
-  console.log("scheduled", evt.cron);
+  const env_ = env as Parameters<typeof getEnv>[0];
+  const work = handleCron(env_);
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(work);
+  } else {
+    await work;
+  }
 }
 
 // Default export required by vitest-pool-workers SELF binding

@@ -24,6 +24,7 @@ preview_id = "00000000-0000-0000-0000-000000000002"
 # Environment variables injected via wrangler secret put BOT_TOKEN WEBHOOK_SECRET
 # or defined in .dev.vars for local development (gitignored)
 
-# Cron trigger — populated by U8
-# [triggers]
-# crons = ["*/5 * * * *"]
+# Cron trigger — U8: every 5 minutes; the handler matches the owner's local
+# summary hour and pushes the daily digest.
+[triggers]
+crons = ["*/5 * * * *"]
