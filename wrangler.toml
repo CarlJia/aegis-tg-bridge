@@ -2,25 +2,25 @@ name = "aegis-tg-bridge"
 compatibility_date = "2024-01-01"
 main = "src/index.ts"
 
-# KV namespaces — replace IDs with actual values from `wrangler kv:namespace create`
+# KV namespaces — real namespace IDs from `wrangler kv namespace create`.
 # STATE: all operational keys (whitelist, blacklist, user_settings, owner_chat_id,
 #        pending_buttons, summary_queue, message_map, last_summary)
 # RULES: reserved for KV-based rule overrides
 # SUMMARY: reserved (currently unused; summary data lives in STATE)
+# Local `wrangler dev` uses in-memory miniflare KV, so no preview_id is needed.
+# To point `wrangler dev --remote` at a separate preview namespace, create one
+# with `--preview` and add its id as `preview_id` here.
 [[kv_namespaces]]
 binding = "STATE"
-id = "REPLACE_WITH_STATE_KV_ID"
-preview_id = "00000000-0000-0000-0000-000000000000"
+id = "736cb895ad8b458483cee87f829767c9"
 
 [[kv_namespaces]]
 binding = "RULES"
-id = "REPLACE_WITH_RULES_KV_ID"
-preview_id = "00000000-0000-0000-0000-000000000001"
+id = "9ff26c1e58d943c4871f02a89ef56d3d"
 
 [[kv_namespaces]]
 binding = "SUMMARY"
-id = "REPLACE_WITH_SUMMARY_KV_ID"
-preview_id = "00000000-0000-0000-0000-000000000002"
+id = "b6fcbb0e02004281a20ccabbfcdf68ec"
 
 # Environment variables injected via wrangler secret put BOT_TOKEN WEBHOOK_SECRET
 # or defined in .dev.vars for local development (gitignored)
