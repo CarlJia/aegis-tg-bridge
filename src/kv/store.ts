@@ -17,6 +17,9 @@ const PREFIX = "bot:";
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Reads fail loud: a KV error propagates so the webhook returns 500 and
+// Telegram retries the update. Swallowing it would silently degrade the
+// whitelist/blacklist gating decisions below, which is worse than a retry.
 async function safeGet<T>(
   kv: KVNamespace,
   key: string,
@@ -35,11 +38,7 @@ async function safeGetRaw(
   kv: KVNamespace,
   key: string
 ): Promise<string | null> {
-  try {
-    return await kv.get(key);
-  } catch {
-    return null;
-  }
+  return kv.get(key);
 }
 
 // ---------------------------------------------------------------------------
