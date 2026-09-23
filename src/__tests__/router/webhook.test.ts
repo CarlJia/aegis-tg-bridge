@@ -22,14 +22,26 @@ function getCallbackCount(): number {
   return callbackModule.getCalls();
 }
 
+function createKV(): KVNamespace {
+  const store = new Map<string, string>();
+  return {
+    async get(key: string) { return store.get(key) ?? null; },
+    async put(key: string, value: string | null) {
+      if (value === null) store.delete(key);
+      else store.set(key, value);
+    },
+    async delete(key: string) { store.delete(key); },
+    async list(_opts?: { prefix?: string }) { return { keys: [] }; },
+  } as unknown as KVNamespace;
+}
+
 function stubEnv(): Env {
-  // Tests do not exercise real KV; pass a proxy object that satisfies the type.
   return {
     BOT_TOKEN: "test_bot_token",
     WEBHOOK_SECRET: "test_secret",
-    STATE: {} as KVNamespace,
-    RULES: {} as KVNamespace,
-    SUMMARY: {} as KVNamespace,
+    STATE: createKV(),
+    RULES: createKV(),
+    SUMMARY: createKV(),
   };
 }
 
@@ -93,7 +105,7 @@ describe("webhook router", () => {
         headers: { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
         body: JSON.stringify({
           update_id: 1,
-          callback_query: { id: "abc", data: "verify:123" },
+          callback_query: { id: "abc", from: { id: 123 }, data: "verify:123" },
         }),
       }),
       stubEnv()
