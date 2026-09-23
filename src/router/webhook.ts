@@ -6,6 +6,7 @@
  */
 
 import type { Env } from "../config";
+import type { TgMessage } from "../flows/first-time";
 import { handleMessage } from "./message";
 import { handleCallbackQuery } from "./callback";
 
@@ -38,9 +39,9 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 
 interface TgUpdate {
   update_id: number;
-  message?: unknown;
-  edited_message?: unknown;
-  callback_query?: unknown;
+  message?: TgMessage;
+  edited_message?: TgMessage;
+  callback_query?: TgCallbackQuery;
   // other fields are possible but unused for now
 }
 
@@ -88,7 +89,7 @@ export async function handleWebhook(req: Request, env: Env): Promise<Response> {
     // edited messages still route through the same message handler
     await handleMessage(update.edited_message, env);
   } else if (update.callback_query) {
-    await handleCallbackQuery(update.callback_query as TgCallbackQuery, env);
+    await handleCallbackQuery(update.callback_query, env);
   } else {
     // Other update types: log and return 200 without dispatching
     console.log("[webhook] unhandled update type:", JSON.stringify(update));

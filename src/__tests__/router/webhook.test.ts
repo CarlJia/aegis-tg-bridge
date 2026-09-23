@@ -1,37 +1,39 @@
 /**
  * Webhook router tests — U2
  *
- * Tests the dispatch chain: secret validation, update type routing, handler
- * invocation. Calls `handleWebhook` directly with a stubbed env to avoid the
- * @cloudflare/vitest-pool-workers `miniflare.vars` propagation complexity
- * (different miniflare versions read it differently). The dispatch logic is
- * exercised end-to-end at this layer; SELF.fetch integration is covered by
- * U9's e2e tests.
+ * Covers secret validation and update-type dispatch. The two downstream
+ * handlers are mocked so this file asserts routing alone; their real behavior
+ * is covered by message.test.ts and callback.test.ts.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { handleWebhook } from "../../router/webhook";
-import * as messageModule from "../../router/message";
-import * as callbackModule from "../../router/callback";
 import type { Env } from "../../config";
 
-function getMessageCount(): number {
-  return messageModule.getCalls();
-}
-function getCallbackCount(): number {
-  return callbackModule.getCalls();
-}
+const { mockHandleMessage, mockHandleCallbackQuery } = vi.hoisted(() => ({
+  mockHandleMessage: vi.fn(async () => {}),
+  mockHandleCallbackQuery: vi.fn(async () => {}),
+}));
+
+vi.mock("../../router/message", () => ({ handleMessage: mockHandleMessage }));
+vi.mock("../../router/callback", () => ({ handleCallbackQuery: mockHandleCallbackQuery }));
 
 function createKV(): KVNamespace {
   const store = new Map<string, string>();
   return {
-    async get(key: string) { return store.get(key) ?? null; },
+    async get(key: string) {
+      return store.get(key) ?? null;
+    },
     async put(key: string, value: string | null) {
       if (value === null) store.delete(key);
       else store.set(key, value);
     },
-    async delete(key: string) { store.delete(key); },
-    async list(_opts?: { prefix?: string }) { return { keys: [] }; },
+    async delete(key: string) {
+      store.delete(key);
+    },
+    async list() {
+      return { keys: [] };
+    },
   } as unknown as KVNamespace;
 }
 
@@ -45,108 +47,86 @@ function stubEnv(): Env {
   };
 }
 
-declare const KVNamespace: never;
+function webhookRequest(headers: Record<string, string>, body: unknown): Request {
+  return new Request("http://test/webhook", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
 
 describe("webhook router", () => {
   beforeEach(() => {
-    // Reset the in-module counters between tests so changes are observable.
-    messageModule.__reset?.();
-    callbackModule.__reset?.();
+    mockHandleMessage.mockClear();
+    mockHandleCallbackQuery.mockClear();
   });
 
   it("returns 401 when X-Telegram-Bot-Api-Secret-Token is missing", async () => {
+    const res = await handleWebhook(webhookRequest({}, { update_id: 1, message: {} }), stubEnv());
+    expect(res.status).toBe(401);
+    expect(mockHandleMessage).not.toHaveBeenCalled();
+    expect(mockHandleCallbackQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when the secret token is wrong", async () => {
     const res = await handleWebhook(
-      new Request("http://test/webhook", {
-        method: "POST",
-        body: JSON.stringify({ update_id: 1, message: {} }),
-      }),
+      webhookRequest({ "X-Telegram-Bot-Api-Secret-Token": "wrong_secret" }, { update_id: 1, message: {} }),
       stubEnv()
     );
     expect(res.status).toBe(401);
-    expect(getMessageCount()).toBe(0);
-    expect(getCallbackCount()).toBe(0);
+    expect(mockHandleMessage).not.toHaveBeenCalled();
+    expect(mockHandleCallbackQuery).not.toHaveBeenCalled();
   });
 
-  it("returns 401 when secret token is wrong", async () => {
+  it("routes update.message to handleMessage", async () => {
     const res = await handleWebhook(
-      new Request("http://test/webhook", {
-        method: "POST",
-        headers: { "X-Telegram-Bot-Api-Secret-Token": "wrong_secret" },
-        body: JSON.stringify({ update_id: 1, message: {} }),
-      }),
-      stubEnv()
-    );
-    expect(res.status).toBe(401);
-    expect(getMessageCount()).toBe(0);
-    expect(getCallbackCount()).toBe(0);
-  });
-
-  it("returns 200 and calls handleMessage for update.message", async () => {
-    const res = await handleWebhook(
-      new Request("http://test/webhook", {
-        method: "POST",
-        headers: { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
-        body: JSON.stringify({
-          update_id: 1,
-          message: { text: "hello", chat: { id: 123 } },
-        }),
-      }),
+      webhookRequest(
+        { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
+        { update_id: 1, message: { message_id: 1, text: "hello", chat: { id: 123 } } }
+      ),
       stubEnv()
     );
     expect(res.status).toBe(200);
-    expect(getMessageCount()).toBe(1);
-    expect(getCallbackCount()).toBe(0);
+    expect(mockHandleMessage).toHaveBeenCalledTimes(1);
+    expect(mockHandleCallbackQuery).not.toHaveBeenCalled();
   });
 
-  it("returns 200 and calls handleCallbackQuery for update.callback_query", async () => {
+  it("routes update.callback_query to handleCallbackQuery", async () => {
     const res = await handleWebhook(
-      new Request("http://test/webhook", {
-        method: "POST",
-        headers: { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
-        body: JSON.stringify({
-          update_id: 1,
-          callback_query: { id: "abc", from: { id: 123 }, data: "verify:123" },
-        }),
-      }),
+      webhookRequest(
+        { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
+        { update_id: 1, callback_query: { id: "abc", from: { id: 123 }, data: "verify:123" } }
+      ),
       stubEnv()
     );
     expect(res.status).toBe(200);
-    expect(getMessageCount()).toBe(0);
-    expect(getCallbackCount()).toBe(1);
+    expect(mockHandleMessage).not.toHaveBeenCalled();
+    expect(mockHandleCallbackQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("returns 200 and calls handleMessage for update.edited_message", async () => {
+  it("routes update.edited_message through handleMessage", async () => {
     const res = await handleWebhook(
-      new Request("http://test/webhook", {
-        method: "POST",
-        headers: { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
-        body: JSON.stringify({
-          update_id: 1,
-          edited_message: { text: "edited hello", chat: { id: 123 } },
-        }),
-      }),
+      webhookRequest(
+        { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
+        { update_id: 1, edited_message: { message_id: 1, text: "edited", chat: { id: 123 } } }
+      ),
       stubEnv()
     );
     expect(res.status).toBe(200);
-    expect(getMessageCount()).toBe(1);
-    expect(getCallbackCount()).toBe(0);
+    expect(mockHandleMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("returns 200 for unknown update types", async () => {
+  it("returns 200 and dispatches nothing for unknown update types", async () => {
     const res = await handleWebhook(
-      new Request("http://test/webhook", {
-        method: "POST",
-        headers: { "X-Telegram-Bot-Api-Secret-Token": "test_secret" },
-        body: JSON.stringify({ update_id: 1, inline_query: {} }),
-      }),
+      webhookRequest({ "X-Telegram-Bot-Api-Secret-Token": "test_secret" }, { update_id: 1, inline_query: {} }),
       stubEnv()
     );
     expect(res.status).toBe(200);
-    expect(getMessageCount()).toBe(0);
-    expect(getCallbackCount()).toBe(0);
+    expect(mockHandleMessage).not.toHaveBeenCalled();
+    expect(mockHandleCallbackQuery).not.toHaveBeenCalled();
   });
 
-  it("returns 400 on invalid JSON body", async () => {
+  it("returns 400 on an invalid JSON body", async () => {
     const res = await handleWebhook(
       new Request("http://test/webhook", {
         method: "POST",
@@ -156,7 +136,6 @@ describe("webhook router", () => {
       stubEnv()
     );
     expect(res.status).toBe(400);
-    expect(getMessageCount()).toBe(0);
-    expect(getCallbackCount()).toBe(0);
+    expect(mockHandleMessage).not.toHaveBeenCalled();
   });
 });
