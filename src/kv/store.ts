@@ -288,3 +288,20 @@ export async function setUserSettings(
 ): Promise<void> {
   await kv.put(`${PREFIX}user_settings:${owner_id}`, JSON.stringify(settings));
 }
+
+// ---------------------------------------------------------------------------
+// Cleanup marker — gates the daily summary-key sweep to one run per UTC day
+// ---------------------------------------------------------------------------
+
+const CLEANUP_KEY = `${PREFIX}last_cleanup`;
+
+export async function getLastCleanup(kv: KVNamespace): Promise<string | null> {
+  return safeGetRaw(kv, CLEANUP_KEY);
+}
+
+export async function setLastCleanup(
+  kv: KVNamespace,
+  date: string
+): Promise<void> {
+  await kv.put(CLEANUP_KEY, date);
+}
