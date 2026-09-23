@@ -7,7 +7,15 @@
  * digest and marks the day as sent for idempotency.
  */
 
-import { getSummary, getLastSummary, setLastSummary, getUserSettings, getOwnerChatId } from "../kv/store";
+import {
+  getSummary,
+  getLastSummary,
+  setLastSummary,
+  getUserSettings,
+  getOwnerChatId,
+  getLastCleanup,
+  setLastCleanup,
+} from "../kv/store";
 import { tgSendMessage } from "../telegram/api";
 import { cleanupOldSummaries } from "./cleanup";
 import type { Env } from "../config";
@@ -63,30 +71,39 @@ function localDate(timeZone: string, now: Date = new Date()): string {
  */
 export async function handleCron(env: Env, now: Date = new Date()): Promise<void> {
   const owner = await getOwnerChatId(env.STATE);
-  if (!owner) {
-    // No owner configured — still run cleanup so KV does not grow unbounded.
-    await cleanupOldSummaries(env.STATE, now);
-    return;
-  }
 
-  const settings = ((await getUserSettings(env.STATE, owner)) ?? {}) as UserSettings;
-  const timeZone = settings.timezone ?? DEFAULT_TIMEZONE;
-  const targetHour = settings.summaryTimeHour ?? DEFAULT_SUMMARY_HOUR;
+  if (owner) {
+    const settings = ((await getUserSettings(env.STATE, owner)) ?? {}) as UserSettings;
+    const timeZone = settings.timezone ?? DEFAULT_TIMEZONE;
+    const targetHour = settings.summaryTimeHour ?? DEFAULT_SUMMARY_HOUR;
 
-  const hour = localHour(timeZone, now);
-  if (hour !== null && hour === targetHour) {
-    const date = localDate(timeZone, now);
+    const hour = localHour(timeZone, now);
+    if (hour !== null && hour === targetHour) {
+      const date = localDate(timeZone, now);
 
-    // Idempotency (KTD4 / R7): skip when this day's digest was already sent.
-    const alreadySent = await getLastSummary(env.STATE, owner, date);
-    if (!alreadySent) {
-      const entries = await getSummary(env.STATE, date);
-      const count = entries.length;
-      await tgSendMessage(env, owner, `今日拦截 ${count} 条`);
-      await setLastSummary(env.STATE, owner, date, Date.now());
+      // Idempotency (KTD4 / R7): skip when this day's digest was already sent.
+      const alreadySent = await getLastSummary(env.STATE, owner, date);
+      if (!alreadySent) {
+        const entries = await getSummary(env.STATE, date);
+        const count = entries.length;
+        await tgSendMessage(env, owner, `今日拦截 ${count} 条`);
+        await setLastSummary(env.STATE, owner, date, Date.now());
+      }
     }
   }
 
-  // Rolling cleanup of old summary keys runs on every cron tick.
+  await maybeCleanup(env, now);
+}
+
+/**
+ * Sweep old summary keys at most once per UTC day. The cron fires every 5
+ * minutes; a KV marker keeps the sweep to one list operation per day instead
+ * of ~288, and keeps the free-tier list budget free for message handling.
+ */
+async function maybeCleanup(env: Env, now: Date): Promise<void> {
+  const todayUtc = now.toISOString().slice(0, 10);
+  const last = await getLastCleanup(env.STATE);
+  if (last === todayUtc) return;
   await cleanupOldSummaries(env.STATE, now);
+  await setLastCleanup(env.STATE, todayUtc);
 }

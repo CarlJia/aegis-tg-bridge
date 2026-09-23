@@ -61,7 +61,7 @@ execution: code
 
 **持久化与部署**
 - R11. BotFather token 通过 Cloudflare Workers Secret 注入,仓库代码任何位置不出现明文 token;本地 `.dev.vars` 留 dev 测试用并加入 `.gitignore`。
-- R12. 状态全部写入 Cloudflare KV,键空间至少包含 `bot:whitelist`、`bot:blacklist`、`bot:rules`、`bot:message_map:{message_id}`、`bot:summary_queue:{YYYY-MM-DD}`、`bot:user_settings`、`bot:owner_chat_id`、`bot:pending_buttons:{chat_id}`(F1 期间原始消息 id 的 placeholder);写读量在 free tier(每日 10 万写 / 10 万读)以内。
+- R12. 状态全部写入 Cloudflare KV,键空间至少包含 `bot:whitelist`、`bot:blacklist`、`bot:rules`、`bot:message_map:{message_id}`、`bot:summary_queue:{YYYY-MM-DD}`、`bot:user_settings`、`bot:owner_chat_id`、`bot:pending_buttons:{chat_id}`(F1 期间原始消息 id 的 placeholder);写读量在 free tier(每日 10 万读 / 1,000 写 / 1,000 list)以内 —— 写与 list 是最紧的两个维度。
 - R13. Worker 是单入口 webhook 处理模块;TG update 路由、callback_query(按钮点击)路由、cron 触发(每日摘要)路由都在同一 Worker 内由类型分发;不依赖长连接、不依赖外部数据库。
 
 ### Key Flows
@@ -157,7 +157,7 @@ execution: code
 - 用户在 BotFather 创建 Bot 并把 token 通过 Cloudflare Dashboard → Worker Settings → Variables / Secrets 注入;仓库代码与 PR 不出现明文 token。
 - 用户有 Cloudflare 账号,可创建 Worker、KV namespace、绑定 Webhook URL、设置 Cron Trigger。
 - 默认时区假设 UTC+8;若不在该时区需在 `/settings` 中调整。
-- Cloudflare Workers free tier(10 万次写 / 读 / 天,cron 5 分钟粒度)在本项目预期消息量级内可用。
+- Cloudflare Workers free tier(KV 每日 10 万读 / 1,000 写 / 1,000 list,Workers 10 万请求/天,cron 5 分钟粒度)在本项目预期消息量级内可用;KV 写与 list 是最紧的维度,cron 清理已限为每 UTC 日一次以省 list。
 - TG 入站消息当前只接受 private 消息(不做群 / 频道入口)。
 - 单 owner、单 Bot、单 Worker 部署;不设多租户。
 
@@ -202,7 +202,7 @@ execution: code
 
 - KV namespace 三个:`STATE`、`RULES`、`SUMMARY`。U1 实施时分别 `wrangler kv:namespace create` 三个,把 ID 填入 `wrangler.toml` 的 `[[kv_namespaces]]`。
 - `message_map` 的 reply 命中窗口取 30 天(过期后只可能丢失远超过 30 天的 reply,这类 edge 不在 v1 服务范围内;若发生,owner 收到"找不到对应陌生人"提示)。
-- `summary_queue:{YYYY-MM-DD}` 键的 TTL 在写入时通过 KV `expiration` 字段设为 7 天(CF KV 支持),cron handler 在处理当日时也主动 list + delete 8 天前的键以避免膨胀。
+- `summary_queue:{YYYY-MM-DD}` 键的 TTL 在写入时通过 KV `expiration` 字段设为 7 天(CF KV 支持),cron handler 每 UTC 日仅一次(用 `bot:last_cleanup` marker 门控)list + delete 8 天前的键以避免膨胀,省 free tier 的 list 额度。
 - `pending_buttons:{chat_id}` TTL 7 天,点过按钮或不再接收的陌生人 kv 键自然过期清理。
 - `last_summary:{owner_id}:{YYYY-MM-DD}` TTL 8 天作为 cron idempotency marker,发送成功后写入,下次 cron 若存在则跳过推送。
 - 规则的首版以 `src/rules/default.ts` 中静态 regex 数组编译;KV 覆盖仅在 `bot:rules` 存在且 JSON 解析成功时启用;解析失败时,Worker 在 `console.warn` 后回退到默认规则。
@@ -362,7 +362,7 @@ execution: code
 - **Dependencies:** U1, U4, U6。
 - **Files:**
   - `src/cron/summary.ts`(新建)— `handleCron(env)`:遍历 `bot:user_settings`,对匹配当前 TZ 时刻的 owner 调 sendMessage;读当日 `bot:summary_queue:{YYYY-MM-DD}`,send "今日拦截 X 条" + inline "查看详情" 按钮。
-  - `src/cron/cleanup.ts`(新建)— 在 handler 同一入口内,list KV keys `bot:summary_queue:*`,删除 8 天前日期的 key(避免依赖 TTL 异步)。
+  - `src/cron/cleanup.ts`(新建)— list KV keys `bot:summary_queue:*`,删除 8 天前日期的 key;由 `summary.ts` 的 `maybeCleanup` 每 UTC 日调用一次(`bot:last_cleanup` marker 门控),而非每次 cron tick。
   - `src/index.ts`(修改)— 导出 `scheduled(event, env, ctx)` 调用 summary handler;`ctx.waitUntil` 包住 cleanup。
   - `wrangler.toml`(修改)— `[triggers] crons = ["*/5 * * * *"]`。
   - `src/__tests__/cron/summary.test.ts`(新建)。
@@ -404,7 +404,7 @@ execution: code
 | Deploy | `wrangler deploy` | 跨 unit 集成发布 |
 | 真实 smoke | `wrangler tail` + 真实 TG 对话 | 部署后验证 |
 | Cron 本地 | `wrangler scheduled` 或集成测试 mock | U8 |
-| KV 配额 | CF Dashboard → KV → Metrics,写读 / 天在 10 万以内 | 全程 |
+| KV 配额 | CF Dashboard → KV → Metrics,写 ≤ 1,000/天、list ≤ 1,000/天、读 ≤ 10 万/天 | 全程 |
 
 **Failure signals:**
 - 单元测试红色、集成测试红色、TS 类型错误、wrangler deploy 报错、wrangler dev 启动报 TLS/secret 错、真实 TG smoke 中 reply 无响应、Cron 摘要时间错位或完全未达 owner。

@@ -144,6 +144,25 @@ describe("handleCron", () => {
     await handleCron(env, new Date("2026-09-23T14:00:00Z"));
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("sweeps old summary keys at most once per UTC day", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:summary_queue:2026-09-01", "[]");
+
+    // First tick of the day performs the sweep.
+    await handleCron(env, new Date("2026-09-23T01:00:00Z"));
+    expect(await env.STATE.get("bot:summary_queue:2026-09-01")).toBeNull();
+
+    // A stale key recreated later the same day must survive the next tick —
+    // the sweep is gated to one run per UTC day.
+    await env.STATE.put("bot:summary_queue:2026-09-01", "[]");
+    await handleCron(env, new Date("2026-09-23T02:00:00Z"));
+    expect(await env.STATE.get("bot:summary_queue:2026-09-01")).not.toBeNull();
+
+    // The next UTC day sweeps again.
+    await handleCron(env, new Date("2026-09-24T01:00:00Z"));
+    expect(await env.STATE.get("bot:summary_queue:2026-09-01")).toBeNull();
+  });
 });
 
 describe("cleanupOldSummaries", () => {
