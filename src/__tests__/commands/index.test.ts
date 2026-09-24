@@ -20,8 +20,10 @@ describe("dispatch", () => {
     await stateKv.delete("bot:owner_chat_id");
     await stateKv.delete("bot:blacklist");
     await stateKv.delete("bot:whitelist");
+    await (env.RULES as KVNamespace).delete("bot:rules");
     mockFetch = vi.spyOn(globalThis, "fetch") as unknown as ReturnType<typeof vi.spyOn>;
-    mockFetch.mockResolvedValue(
+    // Fresh Response per call — /start now issues two calls (menu + welcome).
+    mockFetch.mockImplementation(async () =>
       new Response(JSON.stringify({ ok: true, result: {} }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -44,10 +46,12 @@ describe("dispatch", () => {
     await setOwnerChatId(stateKv, "999");
     const msg = { chat: { id: 999 }, text: "/start" };
     await dispatch(msg, env as Parameters<typeof dispatch>[1]);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    const calls = mockFetch.mock.calls as unknown as [unknown, { body: string }][];
-    const body = JSON.parse((calls[0] as any)[1].body);
-    expect(body.text).toContain("欢迎");
+    expect(mockFetch).toHaveBeenCalledTimes(2); // setMyCommands + sendMessage
+    const calls = mockFetch.mock.calls as unknown as [string, { body: string }][];
+    const sent = calls
+      .map((c) => JSON.parse(c[1].body))
+      .find((b) => typeof b.text === "string");
+    expect(sent?.text).toContain("欢迎");
   });
 
   it("/start from a non-owner is silently ignored when an owner exists", async () => {
@@ -60,7 +64,7 @@ describe("dispatch", () => {
   it("/start with no owner bootstraps ownership", async () => {
     const msg = { chat: { id: 888 }, text: "/start" };
     await dispatch(msg, env as Parameters<typeof dispatch>[1]);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2); // setMyCommands + sendMessage
   });
 
   it("/block from owner invokes block handler and writes blacklist", async () => {
@@ -92,5 +96,21 @@ describe("dispatch", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const list = await getWhitelist(stateKv);
     expect(list).toContain("456");
+  });
+
+  it("/rules from owner adds a keyword to RULES", async () => {
+    await setOwnerChatId(stateKv, "999");
+    const msg = { chat: { id: 999 }, text: "/rules add 关键词" };
+    await dispatch(msg, env as Parameters<typeof dispatch>[1]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const rules = await (env.RULES as KVNamespace).get("bot:rules");
+    expect(rules).toContain("关键词");
+  });
+
+  it("/rules from non-owner is silently ignored", async () => {
+    const msg = { chat: { id: 888 }, text: "/rules add 关键词" };
+    await dispatch(msg, env as Parameters<typeof dispatch>[1]);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(await (env.RULES as KVNamespace).get("bot:rules")).toBeNull();
   });
 });

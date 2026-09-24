@@ -48,6 +48,9 @@ docs/plans/             需求与实现计划
 | `/block <chat_id>` | 加入黑名单,后续静默丢弃 |
 | `/revoke <chat_id>` | 移出白名单 |
 | `/whitelist <chat_id>` | 手动加入白名单 |
+| `/rules [list\|add <词>\|del <词>\|reset]` | 维护屏蔽词(关键词),写入 KV 实时生效 |
+
+命令仅 owner 可用:`/start` 后菜单以 chat scope 只注册到 owner 会话,其他用户在输入框看不到;执行层另有 owner 校验。
 
 ## 本地开发
 
@@ -63,6 +66,34 @@ pnpm dev           # wrangler dev
 ## 部署
 
 见 [docs/setup.md](docs/setup.md)。
+
+## Cloudflare 资源限制与收费
+
+本项目**按 Cloudflare 免费额度设计**,正常个人使用不会产生费用。以下数字为免费套餐(Free plan)的日/请求额度,仅供参考,**以 [Cloudflare 官方定价](https://developers.cloudflare.com/workers/platform/pricing/) 为准**(额度会调整)。
+
+### Workers(Free plan)
+
+| 项目 | 免费额度 | 本项目用量 |
+|---|---|---|
+| 请求数 | 100,000 次/天 | 每条 TG 消息 = 1 次 webhook 请求;Cron 每次触发 = 1 次调用 |
+| CPU 时间 | 单次 10 ms | 纯规则匹配 + 少量 KV 读写,远低于上限 |
+| Cron Triggers | 免费可用 | `*/5 * * * *`,每天 288 次,计入上面的调用数 |
+
+### Workers KV(Free plan)
+
+| 操作 | 免费额度 | 本项目用量(最紧的是写与 list) |
+|---|---|---|
+| 读 read | 100,000 次/天 | 每条入站消息数次读(黑白名单、owner、规则等) |
+| 写 write | 1,000 次/天 | 白名单变更、拦截审计入队、`/rules` 维护、摘要标记 |
+| 删除 delete | 1,000 次/天 | 按钮态清理、`/rules reset`、旧队列清理 |
+| list | 1,000 次/天 | 每日摘要 Cron 扫描 summary_queue 键 |
+| 存储 | 1 GB | 键值均为小 JSON,单键 < 1 MB 上限 |
+
+> 写、删除、list 三个维度各 1,000 次/天是免费额度里最紧的约束。日常一对一聊天体量远达不到;若把 Bot 公开给大量陌生人,拦截审计的写入(每条命中规则的消息 1 次写)可能逼近上限,届时可考虑合并写入或升级到付费套餐($5/月起,含大幅提升的额度 + 超量按用量计费)。
+
+### KV 一致性提醒
+
+KV 写入经边缘缓存传播,全球生效有 **最长约 60 秒** 延迟(读有 60s 缓存下限)。因此 `/rules` 改动在生产环境最多约 1 分钟后才对所有边缘节点生效;本地 `wrangler dev` 的 miniflare KV 是即时一致的,手动验证会立即看到效果。
 
 ## 本地零进程说明
 

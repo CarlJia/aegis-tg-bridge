@@ -16,11 +16,15 @@ import {
   setPendingMessageId,
   getPendingMessageId,
   deletePendingMessageId,
+  getRules,
+  setRules,
+  deleteRules,
 } from "../../kv/store";
 
 describe("KV store", () => {
   const ctx = createExecutionContext();
   const kv = env.STATE as KVNamespace;
+  const rulesKv = env.RULES as KVNamespace;
 
   beforeEach(async () => {
     // Reset keys before each test
@@ -31,6 +35,7 @@ describe("KV store", () => {
     await kv.delete("bot:summary_queue:2026-09-23");
     await kv.delete("bot:message_map:m1");
     await kv.delete("bot:user_settings:999");
+    await rulesKv.delete("bot:rules");
   });
 
   // -------------------------------------------------------------------------
@@ -120,5 +125,25 @@ describe("KV store", () => {
     await deletePendingMessageId(kv, "x");
     const mid = await getPendingMessageId(kv, "x");
     expect(mid).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // Rules
+  // -------------------------------------------------------------------------
+
+  it("getRules returns null when unset", async () => {
+    expect(await getRules(rulesKv)).toBeNull();
+  });
+
+  it("setRules then getRules round-trips", async () => {
+    await setRules(rulesKv, { keywords: ["foo"] });
+    const rules = await getRules(rulesKv);
+    expect(rules).toEqual({ keywords: ["foo"] });
+  });
+
+  it("deleteRules then getRules returns null", async () => {
+    await setRules(rulesKv, { keywords: ["foo"] });
+    await deleteRules(rulesKv);
+    expect(await getRules(rulesKv)).toBeNull();
   });
 });

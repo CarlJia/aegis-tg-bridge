@@ -70,6 +70,23 @@ export async function tgSendMessage(
 }
 
 /**
+ * Register the bot command menu for a single chat (scope = chat).
+ * Scoping to the owner's chat keeps the "/" menu invisible to everyone else.
+ * Fails silently.
+ */
+export async function setBotCommands(
+  env: Env,
+  chatId: number | string,
+  commands: { command: string; description: string }[]
+): Promise<void> {
+  await tgFetch(
+    "setMyCommands",
+    { commands, scope: { type: "chat", chat_id: chatId } },
+    env
+  );
+}
+
+/**
  * Copy a message (preserves all content: photo, document, video, etc.)
  * and return the new message_id on success.
  * Fails silently — returns null on error.

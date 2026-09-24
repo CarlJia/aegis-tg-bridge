@@ -37,6 +37,7 @@ const {
   mockGetPendingMessageId,
   mockSetPendingMessageId,
   mockSendVerifyButton,
+  mockGetRules,
 } = vi.hoisted(() => ({
   mockGetOwnerChatId: vi.fn<[KVNamespace], Promise<string | null>>(),
   mockGetWhitelist: vi.fn<[KVNamespace], Promise<string[]>>(),
@@ -46,6 +47,7 @@ const {
   mockGetPendingMessageId: vi.fn<[KVNamespace, string], Promise<string | null>>(),
   mockSetPendingMessageId: vi.fn<[KVNamespace, string, string, number?], Promise<void>>(),
   mockSendVerifyButton: vi.fn<[string, Env], Promise<void>>(),
+  mockGetRules: vi.fn<[KVNamespace], Promise<import("../../kv/store").RulesPayload | null>>(),
 }));
 
 const {
@@ -84,6 +86,7 @@ vi.mock("../../kv/store", () => ({
   getOwnerChatId: mockGetOwnerChatId,
   getWhitelist: mockGetWhitelist,
   getBlacklist: mockGetBlacklist,
+  getRules: mockGetRules,
   pushSummary: mockPushSummary,
   setMessageMap: mockSetMessageMap,
   getPendingMessageId: mockGetPendingMessageId,
@@ -160,6 +163,7 @@ function resetAll() {
   mockSetMessageMap.mockReset().mockResolvedValue(undefined);
   mockGetPendingMessageId.mockReset().mockResolvedValue(null);
   mockSetPendingMessageId.mockReset().mockResolvedValue(undefined);
+  mockGetRules.mockReset().mockResolvedValue(null);
   mockSendVerifyButton.mockReset().mockResolvedValue(undefined);
   mockTgSendMessage.mockReset().mockResolvedValue(undefined);
   mockTgCopyMessage.mockReset().mockResolvedValue(null);
@@ -208,6 +212,45 @@ describe("handleMessage routing", () => {
     expect(mockForwardToOwner).not.toHaveBeenCalled();
     expect(mockSendVerifyButton).not.toHaveBeenCalled();
     expect(mockHandleFirstTime).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Scenario 1c — KV `bot:rules` override is honored (hot reload)
+  // -------------------------------------------------------------------------
+  it("rules_hit via KV override: a custom keyword is intercepted", async () => {
+    mockGetWhitelist.mockResolvedValueOnce([]);
+    mockGetBlacklist.mockResolvedValueOnce([]);
+    mockGetRules.mockResolvedValueOnce({ keywords: ["自定义词"] });
+
+    const msg = {
+      message_id: 7,
+      text: "这是 自定义词 消息",
+      from: { id: 400 },
+      chat: { id: 400 },
+    };
+
+    await handleMessage(msg, stubEnv());
+
+    expect(mockPushSummary).toHaveBeenCalledTimes(1);
+    const entry = mockPushSummary.mock.calls[0]![2];
+    expect(entry.rule_hit).toBe("keywords");
+  });
+
+  it("null rules payload falls back to defaults", async () => {
+    mockGetWhitelist.mockResolvedValueOnce([]);
+    mockGetBlacklist.mockResolvedValueOnce([]);
+    // resetAll leaves mockGetRules resolving null → default engine
+
+    const msg = {
+      message_id: 8,
+      text: "usdt 搬砖",
+      from: { id: 401 },
+      chat: { id: 401 },
+    };
+
+    await handleMessage(msg, stubEnv());
+
+    expect(mockPushSummary).toHaveBeenCalledTimes(1);
   });
 
   // -------------------------------------------------------------------------
