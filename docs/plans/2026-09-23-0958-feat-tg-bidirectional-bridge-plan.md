@@ -189,7 +189,7 @@ execution: code
 
 - **KTD1. Worker 单 module + 内部 router 分派。** Worker 入口是单个 `src/index.ts`,导出 `fetch` 与 `scheduled` 两个 handler;update 类型(`message` / `callback_query` / `edited_message`)在 router 内部 `switch`;优势是冷启动一次就把 KV reads + 规则编译全部 inline cache,无 fork 节点。*session-settled: user-directed — chosen over 多 worker split: 避免跨 worker 调用与 KV 多次往返。* Governs R13。
 - **KTD2. KV 键空间统一 `bot:` 前缀,按用途分桶。** `bot:whitelist`、`bot:blacklist`、`bot:user_settings`、`bot:owner_chat_id` 是单值 / Set 风格 JSON 序列化;`bot:rules`、`bot:message_map:{message_id}`、`bot:summary_queue:{YYYY-MM-DD}` 是单条记录;TTL 设计:`message_map` 30 天(reply 命中窗口),`summary_queue` 7 天(Cron 清理);`whitelist`、`blacklist`、`user_settings`、`rules` 长期保留。*session-settled: user-directed — chosen over 单 megakey: 拒绝 hotspot,KV free tier 单 key 1 MB 上限内。* Governs R12。
-- **KTD3. 规则引擎在 module top-level 编译一次,KV 覆盖热加载。** 默认规则作为代码常量在 `src/rules/default.ts`,在 Worker 冷启动时 `RegExp` 编译一次,缓存到 module 闭包;KV `bot:rules` 存在时,Worker 首请求 lazy-load 并热替 in-memory regex;命中短路。零外部依赖。Governs R6。
+- **KTD3. 规则引擎在 module top-level 编译一次,KV 覆盖热加载。** 默认规则作为代码常量在 `src/rules/default.ts`,在 Worker 冷启动时 `RegExp` 编译一次,缓存到 module 闭包;KV `bot:rules` 存在时,Worker 首请求 lazy-load 并热替 in-memory regex;命中短路。零外部依赖。Governs R6。*实现修订(2026-09-23):* 未采用 module 级缓存 —— 改为每条消息实时读 `bot:rules`,存在则 `compile(resolveRules(payload))`、否则复用模块级 `DEFAULT_ENGINE`;以换取"改完即时生效"并避免 isolate 间 stale。`resolveRules` 用逐字段 `Array.isArray` 守卫合并(非对象展开),`/rules` 命令维护关键词。
 - **KTD4. cron 全局 5 min + tz-aware dispatcher 模式。** Workers Cron Trigger 每 5 分钟触发一次(`crons = ["*/5 * * * *"]`);handler 读 `bot:user_settings`,对每个 owner 计算其 TZ 下当前是否落在目标时刻(默认 22:00,±2.5 min 容忍窗口),命中则调 sendMessage。该方案在 free tier 下扩展性比 per-user cron 表达式好,且 timezone / DST 切换通过下次 cron 重新计算自动适配。Governs R7, R10。
 - **KTD5. Webhook 入口用 `X-Telegram-Bot-Api-Secret-Token` header 校验。** 在 `src/index.ts` 的 `fetch` handler 起手用 `crypto.subtle.timingSafeEqual` 比对 `env.WEBHOOK_SECRET`;不一致直接 `return new Response(null, { status: 401 })`;不依赖 IP 白名单(CF Worker 的来源 IP 是边缘节点,动态)。Governs R11, R13。
 - **KTD6. Reply 透传走 `sendMessage`/`sendPhoto`/`sendDocument`,不走 `forwardMessage`。** `forwardMessage` 会带 forwarded-from header;`copyMessage` 也带。`sendMessage` 等直接无签名,符合陌生人视角"和真人对话"的要求;按消息类型 switch 分派到对应 endpoint。Governs R4。
@@ -274,7 +274,7 @@ execution: code
   - 输入含 `https://example.com/promo` → 命中 `links`,`rule: 'links'`。
   - 输入同时含关键词与链接 → 返回首个规则的命中(实现细节:`keywords` 在前则返回 `keywords`)。
   - 输入 "我来自小米,想合作" 纯文本 → `{ hit: false }`。
-  - `bot:rules` KV 写入 `[{"type":"keywords","patterns":["foo"]}]`,`getEngine` 第二次调用返回 KV 引擎。
+  - `bot:rules` KV 写入 `[{"type":"keywords","patterns":["foo"]}]`,`getEngine` 第二次调用返回 KV 引擎。*实现修订(2026-09-23):* 实际形状为 `Partial<DefaultRules>`(如 `{"keywords":["foo"]}`),非 `[{"type":"keywords",...}]`;`resolveRules` 对 legacy 形状回退默认。关键词按字面量匹配(编译前 `escapeRegExp`)。
 - **Verification:** `pnpm test` 全绿;`wrangler dev` 中 `console.log(getEngine(env).evaluate('usdt 搬砖'))` 输出 `{ hit: true, rule: 'keywords' }`。
 
 ### U4. 用户 onboarding + 管理命令

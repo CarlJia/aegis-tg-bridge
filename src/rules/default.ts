@@ -70,3 +70,34 @@ export const DEFAULT_RULES: DefaultRules = {
   links: { hosts: LINK_HOSTS },
   marketing_prefixes: MARKETING_PREFIXES,
 };
+
+// ---------------------------------------------------------------------------
+// resolveRules — merge a KV override payload onto the defaults
+// ---------------------------------------------------------------------------
+
+/**
+ * 把 KV `bot:rules` 的 payload 合并到默认规则上：提供了的字段整体替换默认，
+ * 未提供或类型不对的字段回退默认。
+ *
+ * 用逐字段 `Array.isArray` 守卫而非对象展开 —— KV 里可能存着历史形状或
+ * 脏数据（例如 legacy 的扁平 `links: string[]`、显式 `null`），展开会把它们
+ * 原样带进来，`links: null` 会让 compile() 在 `rules.links.hosts` 上抛错。
+ * `[]` 是合法覆盖（= 该字段不生效），所以判空必须用 Array.isArray 而非真值判断。
+ */
+export function resolveRules(
+  payload: Partial<DefaultRules> | null | undefined
+): DefaultRules {
+  if (!payload || typeof payload !== "object") return DEFAULT_RULES;
+
+  const keywords = Array.isArray(payload.keywords)
+    ? payload.keywords
+    : DEFAULT_RULES.keywords;
+  const links = Array.isArray(payload.links?.hosts)
+    ? payload.links
+    : DEFAULT_RULES.links;
+  const marketing_prefixes = Array.isArray(payload.marketing_prefixes)
+    ? payload.marketing_prefixes
+    : DEFAULT_RULES.marketing_prefixes;
+
+  return { keywords, links, marketing_prefixes };
+}

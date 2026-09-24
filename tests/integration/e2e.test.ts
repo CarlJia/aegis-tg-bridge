@@ -224,6 +224,43 @@ describe("end-to-end journeys", () => {
     expect(String(digest[0]!.body.text)).toContain("今日拦截 1 条");
   });
 
+  it("R6: /rules hot-reloads a custom keyword; /rules reset restores defaults", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+
+    const n = new Date();
+    const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    const queueKey = `bot:summary_queue:${today}`;
+
+    // Owner adds a custom keyword → persisted to the RULES namespace.
+    await update(env, {
+      update_id: 1,
+      message: { message_id: 1, text: "/rules add 测试暗号", chat: { id: 999 }, from: { id: 999 } },
+    });
+    expect(await env.RULES.get("bot:rules")).toContain("测试暗号");
+
+    // A stranger sending it is intercepted and audited.
+    await update(env, {
+      update_id: 2,
+      message: { message_id: 2, text: "测试暗号 快来", chat: { id: 555 }, from: { id: 555, username: "s" } },
+    });
+    expect(await env.STATE.get(queueKey)).toContain("keywords");
+
+    // Owner resets → override key removed.
+    await update(env, {
+      update_id: 3,
+      message: { message_id: 3, text: "/rules reset", chat: { id: 999 }, from: { id: 999 } },
+    });
+    expect(await env.RULES.get("bot:rules")).toBeNull();
+
+    // The same text from another stranger is no longer keyword-intercepted.
+    await update(env, {
+      update_id: 4,
+      message: { message_id: 4, text: "测试暗号 快来", chat: { id: 556 }, from: { id: 556, username: "s2" } },
+    });
+    expect(await env.STATE.get(queueKey)).not.toContain("556");
+  });
+
   it("R5: a bare owner message prompts for a reply and reaches no stranger (AE5)", async () => {
     const env = createEnv();
     await env.STATE.put("bot:owner_chat_id", "999");

@@ -9,7 +9,8 @@
  *  5. else              → handleFirstTime (button flow, U5)
  */
 
-import { evaluateMessage } from "../rules/engine";
+import { DEFAULT_ENGINE, compile } from "../rules/engine";
+import { resolveRules } from "../rules/default";
 import { dispatch } from "../commands/index";
 import { handleFirstTime } from "../flows/first-time";
 import { handleOwnerMessage } from "../flows/owner-message";
@@ -18,6 +19,7 @@ import {
   getOwnerChatId,
   getWhitelist,
   getBlacklist,
+  getRules,
   pushSummary,
 } from "../kv/store";
 import type { Env } from "../config";
@@ -68,8 +70,12 @@ async function classify(msg: TgMessage, env: Env): Promise<Route> {
     return { type: "whitelisted" };
   }
 
-  // 5) Rule engine hit?
-  const result = evaluateMessage(msg.text ?? msg.caption ?? "");
+  // 5) Rule engine hit? KV `bot:rules` override is read lazily here — owner,
+  //    command, and whitelisted paths never touch RULES, so a RULES outage
+  //    cannot take those core paths down.
+  const payload = await getRules(env.RULES);
+  const engine = payload === null ? DEFAULT_ENGINE : compile(resolveRules(payload));
+  const result = engine.evaluate(msg.text ?? msg.caption ?? "");
   if (result.hit) {
     return { type: "rules_hit", rule: result.rule! };
   }

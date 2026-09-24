@@ -6,6 +6,7 @@ import { handleSettings } from "./settings";
 import { handleBlock } from "./block";
 import { handleRevoke } from "./revoke";
 import { handleWhitelist } from "./whitelist";
+import { handleRules } from "./rules";
 
 // 每个 handler 内部已做 assertOwner 检查（defense in depth），
 // dispatch 的 owner gate 是第一道防线。
@@ -46,6 +47,9 @@ export async function dispatch(
       break;
     case "/whitelist":
       await handleWhitelist(message, env);
+      break;
+    case "/rules":
+      await handleRules(message, env);
       break;
     default:
       // 未知命令静默忽略

@@ -67,6 +67,15 @@ export function compileSafeRegex(pattern: string): RegExp | null {
   }
 }
 
+/**
+ * 转义正则元字符，让关键词按字面量匹配。
+ * 屏蔽词是普通文本（`C++`、`1.5` 等），转义后行为可预期，也避免空模式
+ * 之外的元字符误伤。转义后必然通过 sanitize。
+ */
+export function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // ---------------------------------------------------------------------------
 // URL extraction helper
 // ---------------------------------------------------------------------------
@@ -116,7 +125,7 @@ export function compile(rules: DefaultRules): CompiledEngine {
   // 编译 keywords 为大小写不敏感的正则（每条单独编译）
   const keywordRegexes: RegExp[] = [];
   for (const pattern of rules.keywords) {
-    const re = compileSafeRegex(pattern);
+    const re = compileSafeRegex(escapeRegExp(pattern));
     if (re) keywordRegexes.push(re);
   }
 

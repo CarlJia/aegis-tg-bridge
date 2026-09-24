@@ -1,3 +1,5 @@
+import type { DefaultRules } from "../rules/default";
+
 export interface SummaryEntry {
   ts: number;
   chat_id: string;
@@ -114,11 +116,8 @@ export async function removeFromBlacklist(
 // Rules
 // ---------------------------------------------------------------------------
 
-export interface RulesPayload {
-  keywords?: string[];
-  links?: string[];
-  marketing_prefixes?: string[];
-}
+/** KV `bot:rules` 覆盖载荷 —— 与 DefaultRules 同形，字段均可选。 */
+export type RulesPayload = Partial<DefaultRules>;
 
 export async function getRules(
   kv: KVNamespace
@@ -139,6 +138,10 @@ export async function setRules(
 ): Promise<void> {
   const opts = expirationTtl ? { expirationTtl } : undefined;
   await kv.put(`${PREFIX}rules`, JSON.stringify(rules), opts);
+}
+
+export async function deleteRules(kv: KVNamespace): Promise<void> {
+  await kv.delete(`${PREFIX}rules`);
 }
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,8 @@ main = "src/index.ts"
 # KV namespaces — real namespace IDs from `wrangler kv namespace create`.
 # STATE: all operational keys (whitelist, blacklist, user_settings, owner_chat_id,
 #        pending_buttons, summary_queue, message_map, last_summary)
-# RULES: reserved for KV-based rule overrides
+# RULES: KV-based rule overrides (bot:rules), hot-loaded per message by the
+#        router and managed via the /rules command
 # SUMMARY: reserved (currently unused; summary data lives in STATE)
 # Local `wrangler dev` uses in-memory miniflare KV, so no preview_id is needed.
 # To point `wrangler dev --remote` at a separate preview namespace, create one
