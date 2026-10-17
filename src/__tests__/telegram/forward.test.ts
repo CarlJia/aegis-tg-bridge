@@ -129,6 +129,89 @@ describe("forwardToOwner", () => {
     expect(body.caption).toContain("look at this");
   });
 
+  it("attaches a copy-text button whose payload is the body alone, without the prefix", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+
+    await forwardToOwner("123", textMessage(123, "hello"), env);
+
+    const [, opts] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as {
+      text: string;
+      reply_markup?: { inline_keyboard: { copy_text?: { text: string } }[][] };
+    };
+    const button = body.reply_markup?.inline_keyboard[0]![0]!;
+    expect(body.text).toContain("[from @stranger_x · chat_id=123]");
+    expect(button?.copy_text?.text).toBe("hello");
+  });
+
+  it("attaches a copy-text button with the original caption on media forwards", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+
+    await forwardToOwner("456", photoMessage(456, "look at this"), env);
+
+    const [, opts] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as {
+      caption: string;
+      reply_markup?: { inline_keyboard: { copy_text?: { text: string } }[][] };
+    };
+    expect(body.caption).toContain("[from @stranger_y · chat_id=456]");
+    expect(body.reply_markup?.inline_keyboard[0]![0]!.copy_text?.text).toBe("look at this");
+  });
+
+  it("keeps the copy button at exactly 256 ASCII bytes and drops it at 257", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+
+    await forwardToOwner("123", textMessage(123, "a".repeat(256)), env);
+    const atLimit = JSON.parse((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string) as {
+      reply_markup?: unknown;
+    };
+    expect(atLimit.reply_markup).toBeDefined();
+
+    fetchSpy.mockClear();
+    await forwardToOwner("123", textMessage(123, "a".repeat(257)), env);
+    const overLimit = JSON.parse((fetchSpy.mock.calls[0] as [string, RequestInit])[1].body as string) as {
+      reply_markup?: unknown;
+    };
+    // Telegram rejects copy_text payloads over its limit, which would fail the
+    // whole send — so the button is dropped rather than truncating silently.
+    expect(overLimit.reply_markup).toBeUndefined();
+  });
+
+  it("drops the copy button, but still forwards, when a CJK body exceeds 256 bytes", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+
+    // 100 characters (300 UTF-8 bytes, 100 UTF-16 units): under a character
+    // reading this would keep the button and risk a rejected send; measured in
+    // bytes it drops the button while the forward itself still goes out.
+    const body = "汉".repeat(100);
+    const id = await forwardToOwner("123", textMessage(123, body), env);
+
+    expect(id).toBe(777);
+    const [, opts] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const sent = JSON.parse(opts.body as string) as { text: string; reply_markup?: unknown };
+    expect(sent.reply_markup).toBeUndefined();
+    expect(sent.text).toContain(`[from @stranger_x · chat_id=123]`);
+    expect(sent.text).toContain(body);
+  });
+
+  it("keeps the copy button for a short non-ASCII body and copies it verbatim", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+
+    const body = "汉".repeat(80);
+    await forwardToOwner("123", textMessage(123, body), env);
+
+    const [, opts] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const sent = JSON.parse(opts.body as string) as {
+      reply_markup?: { inline_keyboard: { copy_text?: { text: string } }[][] };
+    };
+    expect(sent.reply_markup?.inline_keyboard[0]![0]!.copy_text?.text).toBe(body);
+  });
+
   it("returns null and sends nothing when no owner_chat_id is set", async () => {
     const env = createEnv();
     const id = await forwardToOwner("123", textMessage(123, "hello"), env);

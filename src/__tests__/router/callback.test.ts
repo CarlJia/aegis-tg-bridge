@@ -26,7 +26,15 @@ const {
   mockSetMessageMap: vi.fn<[KVNamespace, string, string, number?], Promise<void>>(),
   mockAnswerCallbackQuery: vi.fn<[string, string | undefined, Env], Promise<void>>(),
   mockCopyMessageToOwner: vi.fn<
-    [number | string, number | string, number, string, Env, boolean],
+    [
+      number | string,
+      number | string,
+      number,
+      string,
+      Env,
+      boolean,
+      Record<string, unknown>?,
+    ],
     Promise<number | null>
   >(),
   mockDeleteMessage: vi.fn<[number | string, number, Env], Promise<void>>(),
@@ -130,13 +138,28 @@ describe("handleCallbackQuery", () => {
         stubEnv()
       );
       expect(mockCopyMessageToOwner).toHaveBeenCalledTimes(1);
-      // copyMessageToOwner(owner_chat_id, source_chat_id, message_id, prefix, env, isText)
+      // copyMessageToOwner(owner_chat_id, source_chat_id, message_id, prefix, env, isText, replyMarkup)
       const [ownerId, sourceId, , body, , isText] = mockCopyMessageToOwner.mock.calls[0]!;
       expect(ownerId).toBe("111");
       expect(sourceId).toBe("789");
       expect(body).toContain("[from @stranger_john · chat_id=789]");
       expect(body).toContain("想谈合作");
       expect(isText).toBe(true);
+    });
+
+    it("attaches a copy-text button carrying the stranger's original message", async () => {
+      mockGetOwnerChatId.mockResolvedValueOnce("111");
+      mockGetPendingMessageId.mockResolvedValueOnce(
+        JSON.stringify({ message_id: 5, text: "想谈合作", caption: null })
+      );
+      await handleCallbackQuery(
+        { id: "q1", from: { id: 789, username: "stranger_john" }, data: "verify:789" },
+        stubEnv()
+      );
+      const markup = mockCopyMessageToOwner.mock.calls[0]![6] as {
+        inline_keyboard: { copy_text?: { text: string } }[][];
+      };
+      expect(markup.inline_keyboard[0]![0]!.copy_text?.text).toBe("想谈合作");
     });
 
     it("registers the forwarded verify-time message so the owner can reply to it", async () => {

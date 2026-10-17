@@ -27,7 +27,7 @@ import {
   getOwnerChatId,
 } from "../kv/store";
 import { answerCallbackQuery, copyMessageToOwner, deleteMessage } from "../telegram/send";
-import { registerRelayTarget } from "../telegram/forward";
+import { buildCopyMarkup, registerRelayTarget } from "../telegram/forward";
 import type { Env } from "../config";
 
 interface PendingSnapshot {
@@ -129,7 +129,8 @@ export async function handleCallbackQuery(
       0,
       body,
       env,
-      true
+      true,
+      buildCopyMarkup(originalText)
     );
     if (ownerMsgId !== null) {
       await registerRelayTarget(env.STATE, ownerMsgId, parsed_chat_id, owner_chat_id);
