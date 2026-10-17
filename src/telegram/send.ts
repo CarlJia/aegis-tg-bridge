@@ -59,24 +59,25 @@ export async function copyMessageToOwner(
   message_id: number,
   prefix: string,
   env: Env,
-  isText: boolean
+  isText: boolean,
+  replyMarkup?: Record<string, unknown>
 ): Promise<number | null> {
-  const result = isText
-    ? await tgCall<{ message_id: number }>(
-        "sendMessage",
-        { chat_id: owner_chat_id, text: prefix },
-        env
-      )
-    : await tgCall<{ message_id: number }>(
-        "copyMessage",
-        {
-          chat_id: owner_chat_id,
-          from_chat_id: source_chat_id,
-          message_id,
-          caption: prefix,
-        },
-        env
-      );
+  const body: Record<string, unknown> = isText
+    ? { chat_id: owner_chat_id, text: prefix }
+    : {
+        chat_id: owner_chat_id,
+        from_chat_id: source_chat_id,
+        message_id,
+        caption: prefix,
+      };
+  if (replyMarkup !== undefined) {
+    body.reply_markup = replyMarkup;
+  }
+  const result = await tgCall<{ message_id: number }>(
+    isText ? "sendMessage" : "copyMessage",
+    body,
+    env
+  );
   return result?.message_id ?? null;
 }
 

@@ -51,6 +51,12 @@ export const tgCall = tgFetch;
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Optional arguments shared by the send/copy helpers. */
+export interface TgSendOptions {
+  parseMode?: "HTML" | "Markdown";
+  replyMarkup?: Record<string, unknown>;
+}
+
 /**
  * Send a plain text message. Returns the new message_id, or null on failure.
  * Fails silently.
@@ -59,13 +65,17 @@ export async function tgSendMessage(
   env: Env,
   chatId: number | string,
   text: string,
-  parseMode: "HTML" | "Markdown" = "HTML"
+  options: TgSendOptions = {}
 ): Promise<number | null> {
-  const result = await tgFetch<{ message_id: number }>(
-    "sendMessage",
-    { chat_id: chatId, text, parse_mode: parseMode },
-    env
-  );
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    text,
+    parse_mode: options.parseMode ?? "HTML",
+  };
+  if (options.replyMarkup !== undefined) {
+    body.reply_markup = options.replyMarkup;
+  }
+  const result = await tgFetch<{ message_id: number }>("sendMessage", body, env);
   return result?.message_id ?? null;
 }
 
@@ -97,7 +107,7 @@ export async function tgCopyMessage(
   targetChatId: number | string,
   messageId: number,
   caption?: string,
-  parseMode: "HTML" | "Markdown" = "HTML"
+  options: TgSendOptions = {}
 ): Promise<number | null> {
   const body: Record<string, unknown> = {
     chat_id: targetChatId,
@@ -106,7 +116,10 @@ export async function tgCopyMessage(
   };
   if (caption !== undefined) {
     body.caption = caption;
-    body.parse_mode = parseMode;
+    body.parse_mode = options.parseMode ?? "HTML";
+  }
+  if (options.replyMarkup !== undefined) {
+    body.reply_markup = options.replyMarkup;
   }
   const result = await tgFetch<{ message_id: number }>("copyMessage", body, env);
   return result?.message_id ?? null;

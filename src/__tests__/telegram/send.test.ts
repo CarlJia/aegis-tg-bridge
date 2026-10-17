@@ -129,6 +129,43 @@ describe("copyMessageToOwner", () => {
     expect(body.caption).toBe("[from @y · chat_id=456]");
   });
 
+  it("passes reply_markup through on the text path", async () => {
+    const markup = {
+      inline_keyboard: [[{ text: "📋 复制原文", copy_text: { text: "正文" } }]],
+    };
+    await copyMessageToOwner(
+      999,
+      123,
+      10,
+      "[from @x · chat_id=123]\n正文",
+      stubEnv(),
+      true,
+      markup
+    );
+
+    const body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.text).toBe("[from @x · chat_id=123]\n正文");
+    expect(body.reply_markup).toEqual(markup);
+  });
+
+  it("passes reply_markup through on the copyMessage path", async () => {
+    const markup = {
+      inline_keyboard: [[{ text: "📋 复制原文", copy_text: { text: "正文" } }]],
+    };
+    await copyMessageToOwner(999, 123, 10, "[from @y · chat_id=456]", stubEnv(), false, markup);
+
+    const body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.caption).toBe("[from @y · chat_id=456]");
+    expect(body.reply_markup).toEqual(markup);
+  });
+
+  it("omits reply_markup entirely when none is given", async () => {
+    await copyMessageToOwner(999, 123, 10, "[from @x · chat_id=123]", stubEnv(), true);
+
+    const body = JSON.parse((mockFetch.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.reply_markup).toBeUndefined();
+  });
+
   it("does not throw on fetch failure", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
