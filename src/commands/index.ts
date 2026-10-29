@@ -5,17 +5,23 @@ import { handleStart } from "./start";
 import { handleStats } from "./stats";
 import { handleSettings } from "./settings";
 import { handleBlock } from "./block";
+import { handleUnblock } from "./unblock";
 import { handleRevoke } from "./revoke";
 import { handleWhitelist } from "./whitelist";
 import { handleRules } from "./rules";
 
 // 每个 handler 内部已做 assertOwner 检查（defense in depth），
 // dispatch 的 owner gate 是第一道防线。
+//
+// `ownerChatId` 由调用方（router 的 classify）已经读过时传入，避免同一条命令
+// 重复读 KV；不传时这里自己读一次。
 export async function dispatch(
   message: CommandMessage,
-  env: Env
+  env: Env,
+  ownerChatId?: string | null
 ): Promise<void> {
-  const ownerId = await getOwnerChatId(env.STATE);
+  const ownerId =
+    ownerChatId !== undefined ? ownerChatId : await getOwnerChatId(env.STATE);
   const cmd = (message.text ?? "").split(" ")[0];
   const isOwner = ownerId !== null && String(message.chat.id) === ownerId;
 
@@ -41,16 +47,19 @@ export async function dispatch(
       await handleSettings(message, env);
       break;
     case "/block":
-      await handleBlock(message, env);
+      await handleBlock(message, env, ownerId);
+      break;
+    case "/unblock":
+      await handleUnblock(message, env, ownerId);
       break;
     case "/revoke":
-      await handleRevoke(message, env);
+      await handleRevoke(message, env, ownerId);
       break;
     case "/whitelist":
-      await handleWhitelist(message, env);
+      await handleWhitelist(message, env, ownerId);
       break;
     case "/rules":
-      await handleRules(message, env);
+      await handleRules(message, env, ownerId);
       break;
     default:
       // 未知命令静默忽略

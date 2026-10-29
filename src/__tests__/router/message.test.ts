@@ -364,9 +364,11 @@ describe("handleMessage routing", () => {
     await handleMessage(msg, stubEnv());
 
     expect(mockDispatch).toHaveBeenCalledTimes(1);
+    // The already-read owner id rides along so dispatch does not re-read KV.
     expect(mockDispatch).toHaveBeenCalledWith(
       expect.objectContaining({ text: "/block 999" }),
-      expect.anything()
+      expect.anything(),
+      ownerChatId
     );
     expect(mockHandleOwnerMessage).not.toHaveBeenCalled();
   });

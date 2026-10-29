@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // @ts-ignore
 import { env, createExecutionContext } from "cloudflare:test";
 import { dispatch } from "../../commands/index";
-import { setOwnerChatId, getBlacklist, getWhitelist } from "../../kv/store";
+import {
+  setOwnerChatId,
+  addToBlacklist,
+  getBlacklist,
+  getWhitelist,
+} from "../../kv/store";
 
 describe("dispatch", () => {
   // ctx created before use so KV proxies are initialized
@@ -87,6 +92,36 @@ describe("dispatch", () => {
     expect(mockFetch).not.toHaveBeenCalled();
     const list = await getBlacklist(stateKv);
     expect(list).not.toContain("123");
+  });
+
+  it("/unblock from owner removes the target from the blacklist", async () => {
+    await setOwnerChatId(stateKv, "999");
+    await addToBlacklist(stateKv, "123");
+
+    const msg = { chat: { id: 999 }, text: "/unblock 123" };
+    await dispatch(msg, env as Parameters<typeof dispatch>[1]);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(await getBlacklist(stateKv)).not.toContain("123");
+  });
+
+  it("/unblock from non-owner is silently ignored", async () => {
+    await setOwnerChatId(stateKv, "999");
+    await addToBlacklist(stateKv, "123");
+
+    const msg = { chat: { id: 888 }, text: "/unblock 123" };
+    await dispatch(msg, env as Parameters<typeof dispatch>[1]);
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(await getBlacklist(stateKv)).toContain("123");
+  });
+
+  it("a pre-read owner id is honored without another KV read", async () => {
+    // KV 里没有 owner,但调用方已经确认过身份 —— 说明 dispatch 用的是传入值。
+    const msg = { chat: { id: 999 }, text: "/block 123" };
+    await dispatch(msg, env as Parameters<typeof dispatch>[1], "999");
+
+    expect(await getBlacklist(stateKv)).toContain("123");
   });
 
   it("/whitelist from owner adds to whitelist", async () => {

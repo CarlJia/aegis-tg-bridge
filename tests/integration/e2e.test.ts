@@ -304,6 +304,54 @@ describe("end-to-end journeys", () => {
     expect(String(receipts[0]!.body.text)).toContain("123");
   });
 
+  it("reply '/unblock' restores normal inbound handling for the conversation", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+    await env.STATE.put("bot:blacklist", JSON.stringify(["123"]));
+
+    // Blocked: the stranger's message is dropped silently.
+    await update(env, {
+      update_id: 1,
+      message: {
+        message_id: 2,
+        text: "在吗",
+        chat: { id: 123 },
+        from: { id: 123, username: "stranger_x" },
+      },
+    });
+    expect(sentMessages(fetchSpy)).toHaveLength(0);
+
+    // Owner lifts the block explicitly (the stranger was never forwarded, so
+    // there is no message to reply to here).
+    await update(env, {
+      update_id: 2,
+      message: {
+        message_id: 3,
+        text: "/unblock 123",
+        chat: { id: 999 },
+        from: { id: 999 },
+      },
+    });
+    expect(await env.STATE.get("bot:blacklist")).not.toContain("123");
+
+    // The same stranger is handled normally again — they get the verify button.
+    fetchSpy.mockClear();
+    await update(env, {
+      update_id: 3,
+      message: {
+        message_id: 4,
+        text: "在吗",
+        chat: { id: 123 },
+        from: { id: 123, username: "stranger_x" },
+      },
+    });
+    const toStranger = sentMessages(fetchSpy).filter(
+      (m) => String(m.body.chat_id) === "123"
+    );
+    expect(toStranger).toHaveLength(1);
+    expect(JSON.stringify(toStranger[0]!.body)).toContain("我确认是本人");
+  });
+
   it("R5: a bare owner message prompts for a reply and reaches no stranger (AE5)", async () => {
     const env = createEnv();
     await env.STATE.put("bot:owner_chat_id", "999");

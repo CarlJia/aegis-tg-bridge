@@ -3,13 +3,20 @@ import { getOwnerChatId } from "../kv/store";
 
 /**
  * 验证消息发送者是否为 bot owner。
- * 读取 `bot:owner_chat_id` 与 message.chat.id 比对。
- * 若 KV 不可用或未设置，返回 false（fail-closed）。
+ *
+ * `ownerChatId` 由调用链上游（`router/message.ts` 的 classify）已经读过时传入，
+ * 省掉重复的 KV 往返；不传时自己读一次。两条路径都是 fail-closed：读不到
+ * owner 或读失败都返回 false。
  */
 export async function assertOwner(
   message: { chat: { id: number } },
-  env: Env
+  env: Env,
+  ownerChatId?: string | null
 ): Promise<boolean> {
+  if (ownerChatId !== undefined) {
+    return ownerChatId !== null && String(message.chat.id) === ownerChatId;
+  }
+
   try {
     const ownerId = await getOwnerChatId(env.STATE);
     if (ownerId === null) return false;

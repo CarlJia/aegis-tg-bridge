@@ -5,9 +5,10 @@ import { tgSendMessage } from "../telegram/api";
 
 export async function handleRevoke(
   message: { chat: { id: number }; text?: string },
-  env: Env
+  env: Env,
+  ownerChatId?: string | null
 ): Promise<void> {
-  if (!(await assertOwner(message, env))) return;
+  if (!(await assertOwner(message, env, ownerChatId))) return;
 
   const parts = (message.text ?? "").split(" ").filter(Boolean);
   const chatId = parts[1];

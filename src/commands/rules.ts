@@ -26,9 +26,10 @@ function escapeHtml(text: string): string {
 
 export async function handleRules(
   message: { chat: { id: number }; text?: string },
-  env: Env
+  env: Env,
+  ownerChatId?: string | null
 ): Promise<void> {
-  if (!(await assertOwner(message, env))) return;
+  if (!(await assertOwner(message, env, ownerChatId))) return;
 
   const parts = (message.text ?? "").split(" ").filter(Boolean);
   const sub = parts[1];
