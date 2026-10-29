@@ -85,6 +85,13 @@ function sentMessages(spy: FetchSpy): Captured[] {
   });
 }
 
+/** 转发给 owner 的消息在 message_map 里登记的 owner 侧 message_id。 */
+async function forwardedOwnerMessageId(env: Env): Promise<number> {
+  const mapKeys = await env.STATE.list({ prefix: "bot:message_map:" });
+  expect(mapKeys.keys).toHaveLength(1);
+  return Number(mapKeys.keys[0]!.name.slice("bot:message_map:".length));
+}
+
 describe("end-to-end journeys", () => {
   let fetchSpy: FetchSpy;
   let msgIdCounter: number;
@@ -149,11 +156,7 @@ describe("end-to-end journeys", () => {
 
     // The verify-time forward is registered in message_map (regression: it was
     // missing, so replying to it failed with "找不到对应的陌生人").
-    const mapKeys = await env.STATE.list({ prefix: "bot:message_map:" });
-    expect(mapKeys.keys).toHaveLength(1);
-    const forwardedId = Number(
-      mapKeys.keys[0]!.name.slice("bot:message_map:".length)
-    );
+    const forwardedId = await forwardedOwnerMessageId(env);
 
     // Owner replies to the verify-time forward → relayed to X.
     fetchSpy.mockClear();
@@ -213,12 +216,16 @@ describe("end-to-end journeys", () => {
     );
     expect(duringSpam).toHaveLength(0);
 
-    const queue = await env.STATE.get("bot:summary_queue:2026-09-23");
+    // 入站消息按「当天」写队列,所以键和下面的 cron 注入都必须跟着当天走,
+    // 否则这个用例第二天开始必红。
+    const n = new Date();
+    const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    const queue = await env.STATE.get(`bot:summary_queue:${today}`);
     expect(queue).not.toBeNull();
 
-    // Cron tick at the owner's local 22:00 (= 14:00Z) pushes the digest.
+    // Cron tick at the owner's local 22:00 (= 14:00Z on the same calendar day).
     fetchSpy.mockClear();
-    await handleCron(env, new Date("2026-09-23T14:00:00Z"));
+    await handleCron(env, new Date(`${today}T14:00:00Z`));
     const digest = sentMessages(fetchSpy).filter((m) => m.body.chat_id === "999");
     expect(digest).toHaveLength(1);
     expect(String(digest[0]!.body.text)).toContain("今日拦截 1 条");
@@ -259,6 +266,42 @@ describe("end-to-end journeys", () => {
       message: { message_id: 4, text: "测试暗号 快来", chat: { id: 556 }, from: { id: 556, username: "s2" } },
     });
     expect(await env.STATE.get(queueKey)).not.toContain("556");
+  });
+
+  it("reply '/block' without argument blacklists the replied stranger", async () => {
+    const env = createEnv();
+    await env.STATE.put("bot:owner_chat_id", "999");
+    await env.STATE.put("bot:whitelist", JSON.stringify(["123"]));
+
+    await update(env, {
+      update_id: 1,
+      message: {
+        message_id: 2,
+        text: "在吗",
+        chat: { id: 123 },
+        from: { id: 123, username: "stranger_x" },
+      },
+    });
+    const forwardedId = await forwardedOwnerMessageId(env);
+
+    fetchSpy.mockClear();
+    await update(env, {
+      update_id: 2,
+      message: {
+        message_id: 3,
+        text: "/block",
+        chat: { id: 999 },
+        from: { id: 999 },
+        reply_to_message: { message_id: forwardedId },
+      },
+    });
+
+    expect(await env.STATE.get("bot:blacklist")).toContain("123");
+
+    const receipts = sentMessages(fetchSpy).filter((m) => String(m.body.chat_id) === "999");
+    expect(receipts).toHaveLength(1);
+    expect(String(receipts[0]!.body.text)).toContain("已加入黑名单");
+    expect(String(receipts[0]!.body.text)).toContain("123");
   });
 
   it("R5: a bare owner message prompts for a reply and reaches no stranger (AE5)", async () => {

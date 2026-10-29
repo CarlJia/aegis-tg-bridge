@@ -9,7 +9,7 @@ const WELCOME = `欢迎使用 Aegis TG Bridge！
 <b>命令清单：</b>
 /stats - 查看拦截统计
 /settings - 查看/修改设置
-/block &lt;chat_id&gt; - 将目标加入黑名单
+/block [chat_id] - 加入黑名单(reply 一条转发消息可自动屏蔽该会话)
 /revoke &lt;chat_id&gt; - 从白名单移除目标
 /whitelist &lt;chat_id&gt; - 手动将目标加入白名单
 /rules - 管理屏蔽词（list / add / del / reset）`;

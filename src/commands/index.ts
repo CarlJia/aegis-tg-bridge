@@ -1,5 +1,6 @@
 import type { Env } from "../config";
 import { getOwnerChatId } from "../kv/store";
+import type { CommandMessage } from "../telegram/types";
 import { handleStart } from "./start";
 import { handleStats } from "./stats";
 import { handleSettings } from "./settings";
@@ -11,7 +12,7 @@ import { handleRules } from "./rules";
 // 每个 handler 内部已做 assertOwner 检查（defense in depth），
 // dispatch 的 owner gate 是第一道防线。
 export async function dispatch(
-  message: { chat: { id: number }; text?: string },
+  message: CommandMessage,
   env: Env
 ): Promise<void> {
   const ownerId = await getOwnerChatId(env.STATE);
