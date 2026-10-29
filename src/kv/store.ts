@@ -1,4 +1,5 @@
 import type { DefaultRules } from "../rules/default";
+import type { MessageMap } from "../telegram/types";
 
 export interface SummaryEntry {
   ts: number;
@@ -165,6 +166,31 @@ export async function setMessageMap(
 ): Promise<void> {
   const ttl = expirationTtl !== undefined && expirationTtl >= 1 ? expirationTtl : MSG_MAP_TTL;
   await kv.put(`${PREFIX}message_map:${message_id}`, value, { expirationTtl: ttl });
+}
+
+/**
+ * 查一条 `message_map` 记录，并区分「没找到」与「内容坏了」两种失败 ——
+ * 调用方的提示语不同：没找到是过期或非转发消息，坏了要重新 reply。
+ */
+export type MessageMapLookup =
+  | { status: "ok"; entry: MessageMap }
+  | { status: "missing" }
+  | { status: "corrupt" };
+
+export async function lookupMessageMap(
+  kv: KVNamespace,
+  message_id: string
+): Promise<MessageMapLookup> {
+  const raw = await getMessageMap(kv, message_id);
+  if (raw === null) return { status: "missing" };
+
+  try {
+    const entry = JSON.parse(raw) as Partial<MessageMap>;
+    if (typeof entry.stranger_chat_id !== "string") return { status: "corrupt" };
+    return { status: "ok", entry: entry as MessageMap };
+  } catch {
+    return { status: "corrupt" };
+  }
 }
 
 // ---------------------------------------------------------------------------

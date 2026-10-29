@@ -30,7 +30,7 @@ import type { TgMessage } from "../flows/first-time";
 // ---------------------------------------------------------------------------
 
 type Route =
-  | { type: "command" }
+  | { type: "command"; ownerChatId: string | null }
   | { type: "owner" }
   | { type: "whitelisted" }
   | { type: "blacklisted" }
@@ -55,9 +55,10 @@ async function classify(msg: TgMessage, env: Env): Promise<Route> {
   }
 
   // 2) Slash commands → dispatch. Dispatch gates owner-only commands and
-  //    handles the `/start` ownership bootstrap.
+  //    handles the `/start` ownership bootstrap. The owner id is already in
+  //    hand here, so it rides along instead of being re-read downstream.
   if (text.startsWith("/")) {
-    return { type: "command" };
+    return { type: "command", ownerChatId: ownerId };
   }
 
   // 3) Owner (non-command message)?
@@ -96,7 +97,7 @@ export async function handleMessage(
 
   switch (route.type) {
     case "command": {
-      await dispatch(message, env);
+      await dispatch(message, env, route.ownerChatId);
       return;
     }
 
