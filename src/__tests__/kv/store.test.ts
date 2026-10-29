@@ -7,6 +7,7 @@ import {
   removeFromWhitelist,
   setMessageMap,
   getMessageMap,
+  lookupMessageMap,
   pushSummary,
   getSummary,
   setOwnerChatId,
@@ -145,5 +146,29 @@ describe("KV store", () => {
     await setRules(rulesKv, { keywords: ["foo"] });
     await deleteRules(rulesKv);
     expect(await getRules(rulesKv)).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // Message map lookup
+  // -------------------------------------------------------------------------
+
+  it("lookupMessageMap reports 'missing' for an unset key", async () => {
+    expect(await lookupMessageMap(kv, "nope")).toEqual({ status: "missing" });
+  });
+
+  it("lookupMessageMap returns the entry for a valid record", async () => {
+    const entry = { stranger_chat_id: "123", owner_chat_id: "999", expires_at: 1 };
+    await setMessageMap(kv, "m1", JSON.stringify(entry));
+    expect(await lookupMessageMap(kv, "m1")).toEqual({ status: "ok", entry });
+  });
+
+  it("lookupMessageMap reports 'corrupt' for unparseable JSON", async () => {
+    await setMessageMap(kv, "m1", "not-json");
+    expect(await lookupMessageMap(kv, "m1")).toEqual({ status: "corrupt" });
+  });
+
+  it("lookupMessageMap reports 'corrupt' when stranger_chat_id is absent", async () => {
+    await setMessageMap(kv, "m1", JSON.stringify({ owner_chat_id: "999" }));
+    expect(await lookupMessageMap(kv, "m1")).toEqual({ status: "corrupt" });
   });
 });

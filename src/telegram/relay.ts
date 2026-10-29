@@ -10,23 +10,16 @@
  * (forwardMessage and copyMessage both add a forwarded-from header).
  */
 
-import { getMessageMap } from "../kv/store";
+import { lookupMessageMap } from "../kv/store";
 import { tgSendMessage, tgSendPhoto, tgSendDocument } from "./api";
 import type { Env } from "../config";
 import type { TgMessage } from "../flows/first-time";
-
-interface MessageMap {
-  stranger_chat_id: string;
-  owner_chat_id: string;
-  expires_at: number;
-}
 
 /**
  * Minimal reply shape used to detect owner's reply target. Telegram populates
  * `reply_to_message` when the owner uses the native reply UI.
  */
 interface OwnerRelayMessage extends TgMessage {
-  reply_to_message?: { message_id: number };
   photo?: Array<{ file_id: string }>;
   document?: { file_id: string };
 }
@@ -45,8 +38,8 @@ export async function relayToStranger(
     return null;
   }
 
-  const raw = await getMessageMap(env.STATE, String(repliedId));
-  if (!raw) {
+  const lookup = await lookupMessageMap(env.STATE, String(repliedId));
+  if (lookup.status === "missing") {
     await tgSendMessage(
       env,
       message.chat.id,
@@ -54,16 +47,12 @@ export async function relayToStranger(
     );
     return null;
   }
-
-  let parsed: MessageMap;
-  try {
-    parsed = JSON.parse(raw) as MessageMap;
-  } catch {
+  if (lookup.status === "corrupt") {
     await tgSendMessage(env, message.chat.id, "回复映射已损坏,请重新 reply 一条近期消息");
     return null;
   }
 
-  const target = parsed.stranger_chat_id;
+  const target = lookup.entry.stranger_chat_id;
   const text = message.text;
   const caption =
     text && text.length > 0
