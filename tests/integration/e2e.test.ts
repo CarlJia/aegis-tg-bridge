@@ -213,12 +213,16 @@ describe("end-to-end journeys", () => {
     );
     expect(duringSpam).toHaveLength(0);
 
-    const queue = await env.STATE.get("bot:summary_queue:2026-09-23");
+    // 入站消息按「当天」写队列,所以键和下面的 cron 注入都必须跟着当天走,
+    // 否则这个用例第二天开始必红。
+    const n = new Date();
+    const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    const queue = await env.STATE.get(`bot:summary_queue:${today}`);
     expect(queue).not.toBeNull();
 
-    // Cron tick at the owner's local 22:00 (= 14:00Z) pushes the digest.
+    // Cron tick at the owner's local 22:00 (= 14:00Z on the same calendar day).
     fetchSpy.mockClear();
-    await handleCron(env, new Date("2026-09-23T14:00:00Z"));
+    await handleCron(env, new Date(`${today}T14:00:00Z`));
     const digest = sentMessages(fetchSpy).filter((m) => m.body.chat_id === "999");
     expect(digest).toHaveLength(1);
     expect(String(digest[0]!.body.text)).toContain("今日拦截 1 条");
