@@ -45,7 +45,7 @@ docs/plans/             需求与实现计划
 | `/start` | 绑定 owner(首次调用者成为唯一 owner) |
 | `/stats` | 查看今日与近 7 天拦截数 |
 | `/settings` | 查看时区与摘要推送时间 |
-| `/block <chat_id>` | 加入黑名单,后续静默丢弃 |
+| `/block [chat_id]` | 加入黑名单,后续静默丢弃;不带 chat_id 时自动屏蔽被回复的那条转发消息对应的会话 |
 | `/revoke <chat_id>` | 移出白名单 |
 | `/whitelist <chat_id>` | 手动加入白名单 |
 | `/rules [list\|add <词>\|del <词>\|reset]` | 维护屏蔽词(关键词),写入 KV 实时生效 |
